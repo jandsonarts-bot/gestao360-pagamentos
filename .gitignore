@@ -1,0 +1,7 @@
+.firebase/
+*.log
+__pycache__/
+node_modules/
+functions/.env*
+*.secret
+backup/
