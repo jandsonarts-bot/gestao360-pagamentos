@@ -38,7 +38,9 @@ const I = {
 const ic = n => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
 
 const ui = { view: 'painel', mes: hoje().slice(0, 7), dia: null, filtro: 'todos', busca: '', fPed: 'abertos', anim: true };
-let ctx = null; // item aberto no diálogo
+let ctx = null;
+let instalar = null; // convite de instalação que o navegador entrega quando o app pode ser instalado
+const instalado = () => matchMedia('(display-mode: standalone)').matches; // item aberto no diálogo
 
 // ---------- aparência (cor e modo ficam salvos neste aparelho) ----------
 const CORES = {
@@ -211,6 +213,8 @@ function vPainel() {
   const tipos = [['FIXO', 'Fixos'], ['VARIÁVEL', 'Variáveis'], ['PEDIDO', 'Pedidos']]
     .map(([k, n]) => [n, soma(i => i.tipo === k)]).filter(t => t[1] > 0);
   return `
+  ${instalar ? `<div class="card inst"><img class="logo" src="icon-192.png" alt=""><div><b>Instale o Gestão 360 neste aparelho</b><span>Abre em janela própria, com ícone na área de trabalho.</span></div>
+    <button class="btn primary" data-act="instalar">${ic('baixar')}Instalar</button></div>` : ''}
   <div class="kpis">
     <button class="kpi" data-act="kpi" data-f="todos"><span>Previsto no mês</span><b>${brl(total)}</b><small>${its.length} pagamentos</small></button>
     <button class="kpi ok" data-act="kpi" data-f="pagos"><span>Pago</span><b>${brl(pago)}</b><small>${its.filter(i => i.pago).length} quitados</small></button>
@@ -490,6 +494,8 @@ function dAlertas() {
           : '<span class="muted">Notificações bloqueadas no navegador</span>'}
       </div>
       ${al.length ? al.map(linha).join('') : vazio('Nenhum alerta', 'Nada vencido nem vencendo no período.')}
+      ${instalado() ? '' : `<h4 class="sec">Aplicativo</h4>
+      <button class="btn block" style="margin-top:0" data-act="instalar">${ic('baixar')}Instalar o app neste aparelho</button>`}
       <h4 class="sec">Dados</h4>
       ${cloud.user ? `<button class="btn block primary" style="margin:0 0 8px" data-act="equipe">${ic('prestadores')}Compartilhar com outras pessoas</button>` : ''}
       <button class="btn block" style="margin-top:0" data-act="backup">Backup: baixar ou restaurar os dados</button>
@@ -600,6 +606,12 @@ const acts = {
   kpi: el => { ui.view = 'mensais'; ui.filtro = el.dataset.f; ui.anim = true; render(); window.scrollTo(0, 0); },
   novo: dNovo,
   tema: dTema,
+  instalar: async () => {
+    if (!instalar) return toast('No Chrome ou Edge: menu ⋮ → "Instalar Gestão 360". No iPhone: Compartilhar → "Adicionar à Tela de Início".');
+    instalar.prompt();
+    await instalar.userChoice.catch(() => {});
+    instalar = null; render();
+  },
   equipe: () => dEquipe(),
   tirarMembro: el => dEquipe([...dlg.querySelectorAll('input[name=m]')].map(i => i.value).filter(m => m !== el.dataset.m)),
   cor: el => { tema = { ...tema, cor: el.dataset.c, custom: null }; aplicarTema(); dTema(); },
@@ -809,6 +821,10 @@ document.addEventListener('touchend', ev => {
   if (Math.abs(dx) < 80 || Math.abs(dy) > 50 || dlg.open || semMes() || !app.querySelector('.shell')) return;
   mudarMes(dx < 0 ? 1 : -1);
 }, { passive: true });
+
+window.addEventListener('beforeinstallprompt', ev => { ev.preventDefault(); instalar = ev; render(); });
+window.addEventListener('appinstalled', () => { instalar = null; render(); toast('App instalado'); });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
 aplicarTema();
 onChange(render);

@@ -13,6 +13,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         ".js": "text/javascript",
         ".css": "text/css",
         ".html": "text/html; charset=utf-8",
+        ".webmanifest": "application/manifest+json",
     }
 
     def __init__(self, *a, **kw):

@@ -468,3 +468,7 @@ button.kpi:active, .row:active { transform: scale(.985); }
 .file .mail { min-width: 0; overflow-wrap: anywhere; font-size: 13.5px; font-weight: 600; padding: 4px 0; }
 .file .mail em { font-style: normal; margin-left: 6px; }
 .cloud .link { margin-right: 10px; }
+
+.inst { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; border-color: color-mix(in srgb, var(--c1) 45%, var(--line)); }
+.inst div { flex: 1; min-width: 180px; } .inst b { display: block; } .inst span { font-size: 13px; color: var(--muted); }
+.inst .logo { width: 44px; height: 44px; }
