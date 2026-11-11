@@ -157,7 +157,8 @@ function linha(it) {
   return `<div class="row" data-act="detalhe" ${ref(it)}>
     <div class="dt ${status(it)}"><b>${d}</b><span>${MESES[m - 1].slice(0, 3)}</span></div>
     <div class="info"><strong>${esc(it.titulo)}</strong>
-      <span>${esc(it.sub || '')}${it.forma ? ' · ' + esc(it.forma) : ''}${it.anexos.length ? ` · ${ic('clip')}${it.anexos.length}` : ''}</span></div>
+      <span>${esc(it.sub || '')}${it.forma ? ' · ' + esc(it.forma) : ''}${it.anexos.length ? ` · ${ic('clip')}${it.anexos.length}` : ''}</span>
+      <span class="quando">${it.pago && it.dataPago ? `Pago em ${fmtData(it.dataPago)}` : `Vence em ${fmtData(it.venc)}`}</span></div>
     <div class="val"><b>${brl(it.valor)}</b>${badge(it)}</div>
     ${acoes(it)}
   </div>`;
@@ -250,7 +251,7 @@ function vMensais() {
         <td><strong>${esc(i.titulo)}</strong><small>${esc(i.sub)}</small></td>
         <td class="h-md mono">${esc(i.e.cnpj) || '—'}</td>
         <td class="h-sm"><span class="tag ${i.tipo === 'FIXO' ? 'fx' : 'vr'}">${i.tipo === 'FIXO' ? 'Fixo' : 'Variável'}</span></td>
-        <td>dia ${+i.venc.slice(8)}</td>
+        <td class="mono">${fmtData(i.venc)}</td>
         <td class="h-md">${esc(i.forma)}</td>
         <td class="r mono"><b>${brl(i.valor)}</b></td>
         <td>${badge(i)}${i.anexos.length ? `<span class="clipn">${ic('clip')}${i.anexos.length}</span>` : ''}</td>
