@@ -31,12 +31,44 @@ const I = {
   enviar: '<path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/>',
   documentos: '<path d="M3 7a2 2 0 012-2h4l2 2.5h8a2 2 0 012 2V18a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
   zap: '<path d="M4 20l1.3-4A8 8 0 1112 20a8 8 0 01-3.9-1z"/>',
+  paleta: '<path d="M12 3a9 9 0 100 18c1.2 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.2A3.8 3.8 0 0021 10.6C21 6.4 17 3 12 3z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="10" cy="7.5" r="1"/><circle cx="15" cy="7.5" r="1"/>',
   nuvem: '<path d="M7 18a4.5 4.5 0 01-.6-9A6 6 0 0118 10.5a3.8 3.8 0 01-.5 7.5z"/>',
 };
 const ic = n => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
 
 const ui = { view: 'painel', mes: hoje().slice(0, 7), dia: null, filtro: 'todos', busca: '', fPed: 'abertos', anim: true };
 let ctx = null; // item aberto no diálogo
+
+// ---------- aparência (cor e modo ficam salvos neste aparelho) ----------
+const CORES = {
+  azul: ['Azul 360', '#2476ff', '#22d3ee'],
+  violeta: ['Violeta', '#7c3aed', '#c084fc'],
+  esmeralda: ['Esmeralda', '#059669', '#34d399'],
+  laranja: ['Laranja', '#ea580c', '#f59e0b'],
+  rosa: ['Rosa', '#db2777', '#fb7185'],
+  grafite: ['Grafite', '#475569', '#94a3b8'],
+};
+const TEMA_K = 'gestao360:tema';
+let tema = (() => { try { return JSON.parse(localStorage.getItem(TEMA_K)) || {}; } catch { return {}; } })();
+function aplicarTema() {
+  const r = document.documentElement;
+  const livre = /^#[0-9a-f]{6}$/i.test(tema.custom || '') ? tema.custom : null;
+  const [, c1, c2] = CORES[tema.cor] || (livre ? ['', livre, `color-mix(in srgb, ${livre} 55%, #fff)`] : CORES.azul);
+  r.style.setProperty('--c1', c1); r.style.setProperty('--c2', c2);
+  if (tema.modo === 'claro' || tema.modo === 'escuro') r.dataset.tema = tema.modo; else delete r.dataset.tema;
+  try { localStorage.setItem(TEMA_K, JSON.stringify(tema)); } catch {}
+}
+function contar(el) {
+  const txt = el.textContent, n = parseFloat(txt.replace(/[^\d,]/g, '').replace(',', '.'));
+  if (!isFinite(n) || !n || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const t0 = performance.now();
+  const passo = t => {
+    const p = Math.min(1, (t - t0) / 650);
+    el.textContent = p < 1 ? brl(n * (1 - Math.pow(1 - p, 3))) : txt;
+    if (p < 1 && el.isConnected) requestAnimationFrame(passo);
+  };
+  requestAnimationFrame(passo);
+}
 
 function toast(msg) {
   const t = document.getElementById('toast');
@@ -334,12 +366,14 @@ function render() {
           <button class="lbl" data-act="mes" data-d="0" title="Voltar para o mês atual">${nomeMes(ui.mes)}</button>
           <button data-act="mes" data-d="1" aria-label="Próximo mês">${ic('dir')}</button></div>` : '<span class="grow"></span>'}
         <button class="btn primary novo" data-act="novo" title="Novo pagamento">${ic('mais')}<span>Novo pagamento</span></button>
+        <button class="bell tema" data-act="tema" aria-label="Aparência: cor e modo" title="Aparência">${ic('paleta')}</button>
         <button class="bell ${nAl ? 'on' : ''}" data-act="alertas" aria-label="Alertas de pagamento">${ic('sino')}${nAl ? `<em>${nAl}</em>` : ''}</button>
       </header>
       <section class="view ${anim}">${VIEWS[ui.view][1]()}</section>
     </main>
     <nav class="tabs">${nav('tab')}</nav>
   </div>`;
+  if (anim) app.querySelectorAll('.kpi b').forEach(contar);
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch {} } }
 }
 
@@ -505,6 +539,21 @@ async function enviarDoc(d) {
   toast(r === 'zap+arquivos' ? AVISO_ARQ : 'Documento enviado');
 }
 
+function dTema() {
+  const atual = tema.cor || (tema.custom ? '' : 'azul');
+  abrir(`${cab('Aparência', 'A cor e o modo ficam salvos neste aparelho.')}
+    <div class="body">
+      <h4>Cor do app</h4>
+      <div class="swatches">
+        ${Object.entries(CORES).map(([k, [n, a, b]]) => `<button class="sw ${atual === k ? 'on' : ''}" data-act="cor" data-c="${k}"><i style="background:linear-gradient(135deg,${a},${b})"></i><span>${n}</span></button>`).join('')}
+        <label class="sw ${atual ? '' : 'on'}"><i style="background:${atual ? 'conic-gradient(#f43f5e,#f59e0b,#22c55e,#06b6d4,#6366f1,#d946ef,#f43f5e)' : esc(tema.custom)}"></i><span>Outra cor</span>
+          <input type="color" data-input="corLivre" value="${esc(tema.custom || '#2476ff')}"></label>
+      </div>
+      <h4 class="sec">Modo</h4>
+      <div class="seg">${[['', 'Automático'], ['claro', 'Claro'], ['escuro', 'Escuro']].map(([k, n]) => `<button class="${(tema.modo || '') === k ? 'on' : ''}" data-act="modo" data-m="${k}">${n}</button>`).join('')}</div>
+    </div>`);
+}
+
 async function dVer(a) {
   const u = await urlAnexo(a);
   if (!u) return toast('Este arquivo foi anexado em outro aparelho.');
@@ -521,6 +570,9 @@ const acts = {
   ir: el => { ui.view = el.dataset.v; ui.anim = true; render(); window.scrollTo(0, 0); },
   kpi: el => { ui.view = 'mensais'; ui.filtro = el.dataset.f; ui.anim = true; render(); window.scrollTo(0, 0); },
   novo: dNovo,
+  tema: dTema,
+  cor: el => { tema = { ...tema, cor: el.dataset.c, custom: null }; aplicarTema(); dTema(); },
+  modo: el => { tema = { ...tema, modo: el.dataset.m }; aplicarTema(); dTema(); },
   enviarFin: el => { const it = achar(el.dataset.kind, el.dataset.key); if (it) dEnviar(it); },
   desfazerEnvio: () => { const it = atual(); if (!it) return; delete rec(it).enviado; save(); reabrir(); toast('Envio desfeito'); },
   novoDoc: dDoc,
@@ -650,6 +702,11 @@ document.addEventListener('submit', async ev => {
 });
 document.addEventListener('input', ev => {
   if (ev.target.dataset.input === 'busca') { ui.busca = ev.target.value; render(); }
+  if (ev.target.dataset.input === 'corLivre') {
+    tema = { ...tema, cor: null, custom: ev.target.value }; aplicarTema();
+    dlg.querySelectorAll('.sw').forEach(s => s.classList.toggle('on', s.contains(ev.target)));
+    ev.target.previousElementSibling.previousElementSibling.style.background = ev.target.value;
+  }
 });
 document.addEventListener('change', async ev => {
   const t = ev.target;
@@ -684,6 +741,37 @@ function notificar(forcar) {
   try { new Notification('Gestão 360 · Pagamentos', { body: `${partes.join(' · ')} — total ${brl(al.reduce((s, i) => s + +i.valor, 0))}`, tag: 'gestao360' }); } catch {}
 }
 
+// ---------- interações ----------
+const semMes = () => ['pedidos', 'prestadores', 'documentos'].includes(ui.view);
+const mudarMes = n => { ui.mes = addMes(ui.mes, n); ui.dia = null; ui.anim = true; render(); };
+// brilho que acompanha o cursor nos cartões
+document.addEventListener('pointermove', ev => {
+  const el = ev.target.closest?.('.kpi, .person, .opt, .card');
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  el.style.setProperty('--mx', `${ev.clientX - r.left}px`);
+  el.style.setProperty('--my', `${ev.clientY - r.top}px`);
+});
+// teclado: setas trocam o mês, N cria pagamento
+document.addEventListener('keydown', ev => {
+  if (dlg.open || ev.ctrlKey || ev.metaKey || ev.altKey || /INPUT|TEXTAREA|SELECT/.test(ev.target.tagName)) return;
+  if (!app.querySelector('.shell')) return;
+  if (!semMes() && ev.key === 'ArrowLeft') mudarMes(-1);
+  else if (!semMes() && ev.key === 'ArrowRight') mudarMes(1);
+  else if (ev.key.toLowerCase() === 'n') dNovo();
+});
+// celular: deslizar para os lados troca o mês
+let tx = null, ty = 0;
+document.addEventListener('touchstart', ev => { tx = dlg.open ? null : ev.touches[0].clientX; ty = ev.touches[0].clientY; }, { passive: true });
+document.addEventListener('touchend', ev => {
+  if (tx === null) return;
+  const dx = ev.changedTouches[0].clientX - tx, dy = ev.changedTouches[0].clientY - ty;
+  tx = null;
+  if (Math.abs(dx) < 80 || Math.abs(dy) > 50 || dlg.open || semMes() || !app.querySelector('.shell')) return;
+  mudarMes(dx < 0 ? 1 : -1);
+}, { passive: true });
+
+aplicarTema();
 onChange(render);
 render();
 initCloud();
