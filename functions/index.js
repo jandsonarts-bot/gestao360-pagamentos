@@ -123,7 +123,7 @@ exports.avisoDiarioWhatsApp = onSchedule(
   async () => {
     const snap = await getFirestore().collectionGroup('dados').get();
     for (const doc of snap.docs) {
-      if (doc.id !== 'principal') continue;
+      if (doc.id !== 'principal' || doc.get('movidoParaEquipe')) continue; // dados pessoais que viraram equipe não avisam em dobro
       try {
         const r = await avisar(doc.data());
         console.log(doc.ref.path, JSON.stringify(r));
@@ -136,7 +136,10 @@ exports.avisoDiarioWhatsApp = onSchedule(
 /** Botão "Testar aviso automático" do app: manda agora o resumo de quem chamou. */
 exports.enviarAlertasAgora = onCall({ region: REGION, secrets: [TOKEN] }, async req => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta.');
-  const doc = await getFirestore().doc(`users/${req.auth.uid}/dados/principal`).get();
+  const db = getFirestore();
+  const email = String(req.auth.token.email || '').toLowerCase();
+  const equipes = email ? await db.collection('equipes').where('membros', 'array-contains', email).limit(1).get() : { empty: true };
+  const doc = await db.doc(equipes.empty ? `users/${req.auth.uid}/dados/principal` : `equipes/${equipes.docs[0].id}/dados/principal`).get();
   if (!doc.exists) throw new HttpsError('not-found', 'Nenhum dado salvo ainda.');
   try {
     return await avisar(doc.data());

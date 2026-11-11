@@ -6,7 +6,7 @@ const FB = 'https://www.gstatic.com/firebasejs/10.14.1/';
 const listeners = new Set();
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-export const cloud = { ativo: !!firebaseConfig, pronto: !firebaseConfig, user: null, erro: null };
+export const cloud = { ativo: !!firebaseConfig, pronto: !firebaseConfig, user: null, equipe: null, erro: null };
 export let state = load();
 
 let fb = null, unsub = null, timer = null;
@@ -52,14 +52,51 @@ export function save() {
 }
 
 // ---------- Firebase ----------
-const docRef = () => fb.F.doc(fb.db, 'users', cloud.user.uid, 'dados', 'principal');
+// Os dados ficam em um destes lugares:
+//   users/{uid}/dados/principal      -> uso individual
+//   equipes/{dono}/dados/principal   -> compartilhado com os e-mails em equipes/{dono}.membros
+const LS_ORIGEM = 'gestao360:origem'; // de qual documento veio a cópia local
+let ref = null;
 
 async function pushCloud() {
-  if (!fb || !cloud.user) return;
+  if (!fb || !cloud.user || !ref) return;
   try {
-    await fb.F.setDoc(docRef(), JSON.parse(JSON.stringify(state)));
+    await fb.F.setDoc(ref, JSON.parse(JSON.stringify(state)));
     cloud.erro = null;
   } catch (e) { cloud.erro = e.message; emit(); }
+}
+
+const meuEmail = () => (cloud.user?.email || '').toLowerCase();
+
+async function acharEquipe() {
+  const { F, db } = fb;
+  try {
+    const qs = await F.getDocs(F.query(F.collection(db, 'equipes'), F.where('membros', 'array-contains', meuEmail()), F.limit(1)));
+    if (!qs.empty) return { id: qs.docs[0].id, ...qs.docs[0].data() };
+  } catch (e) { console.warn('Equipe não consultada:', e.message); }
+  return null;
+}
+
+function assinar(novoRef) {
+  const { F } = fb;
+  unsub?.();
+  ref = novoRef;
+  unsub = F.onSnapshot(ref, snap => {
+    if (snap.metadata.hasPendingWrites) return;
+    const d = snap.exists() ? snap.data() : null;
+    // A cópia local só pode ser enviada para o mesmo documento de onde veio.
+    const mesmaOrigem = localStorage.getItem(LS_ORIGEM) === ref.path;
+    if (d && (!mesmaOrigem || (d.atualizado || 0) > (state.atualizado || 0))) {
+      state = normalizar(d); persistLocal(); localStorage.setItem(LS_ORIGEM, ref.path); emit();
+    } else if (d && (d.atualizado || 0) < (state.atualizado || 0)) {
+      pushCloud();
+    } else if (!d && ref.path.startsWith('users/')) {
+      // primeiro acesso desta conta: começa do zero, a menos que a cópia local já seja dela
+      if (!mesmaOrigem && localStorage.getItem(LS_ORIGEM)) state = seed();
+      state.atualizado = Date.now(); persistLocal(); localStorage.setItem(LS_ORIGEM, ref.path); emit();
+      pushCloud();
+    }
+  }, e => { cloud.erro = e.message; emit(); });
 }
 
 export async function initCloud() {
@@ -72,21 +109,16 @@ export async function initCloud() {
     const app = initializeApp(firebaseConfig);
     fb = { app, A, F, S, auth: A.getAuth(app), db: F.getFirestore(app), st: S.getStorage(app) };
     fb.st.maxUploadRetryTime = 8000; fb.st.maxOperationRetryTime = 8000;
-    A.onAuthStateChanged(fb.auth, user => {
-      cloud.user = user; cloud.pronto = true;
-      unsub?.(); unsub = null;
-      if (user) {
-        unsub = F.onSnapshot(docRef(), snap => {
-          if (snap.metadata.hasPendingWrites) return;
-          const d = snap.exists() ? snap.data() : null;
-          if (d && (d.atualizado || 0) > (state.atualizado || 0)) {
-            state = normalizar(d); persistLocal(); emit();
-          } else if (!d || (d.atualizado || 0) < (state.atualizado || 0)) {
-            if (!state.atualizado) state.atualizado = Date.now();
-            pushCloud();
-          }
-        }, e => { cloud.erro = e.message; emit(); });
-      }
+    A.onAuthStateChanged(fb.auth, async user => {
+      cloud.user = user; cloud.pronto = true; cloud.equipe = null;
+      unsub?.(); unsub = null; ref = null;
+      emit();
+      if (!user) return;
+      cloud.equipe = await acharEquipe();
+      if (cloud.user !== user) return; // saiu ou trocou de conta enquanto consultava
+      assinar(cloud.equipe
+        ? F.doc(fb.db, 'equipes', cloud.equipe.id, 'dados', 'principal')
+        : F.doc(fb.db, 'users', user.uid, 'dados', 'principal'));
       emit();
     });
   } catch (e) {
@@ -96,6 +128,32 @@ export async function initCloud() {
 
 export const login = () => fb.A.signInWithPopup(fb.auth, new fb.A.GoogleAuthProvider());
 export const logout = () => fb.A.signOut(fb.auth);
+
+// Dono define quem enxerga e edita os dados. Na primeira vez, os dados atuais viram os da equipe.
+export async function salvarEquipe(emails) {
+  if (!fb || !cloud.user) throw new Error('Entre na sua conta primeiro.');
+  const { F, db } = fb, eu = cloud.user;
+  if (cloud.equipe && cloud.equipe.id !== eu.uid) throw new Error(`Só ${cloud.equipe.donoEmail} pode mudar quem participa.`);
+  const membros = [...new Set([meuEmail(), ...emails.map(e => e.trim().toLowerCase()).filter(Boolean)])];
+  const invalido = membros.find(e => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+  if (invalido) throw new Error(`E-mail inválido: ${invalido}`);
+  const jaExistia = cloud.equipe?.id === eu.uid;
+  const equipe = { dono: eu.uid, donoEmail: meuEmail(), membros };
+  await F.setDoc(F.doc(db, 'equipes', eu.uid), equipe);
+  const dados = F.doc(db, 'equipes', eu.uid, 'dados', 'principal');
+  if (!jaExistia) {
+    const atual = await F.getDoc(dados);
+    if (!atual.exists()) {
+      state.atualizado = Date.now(); persistLocal();
+      await F.setDoc(dados, JSON.parse(JSON.stringify(state)));
+    }
+    await F.setDoc(F.doc(db, 'users', eu.uid, 'dados', 'principal'), { movidoParaEquipe: eu.uid }, { merge: true });
+    localStorage.setItem(LS_ORIGEM, atual.exists() ? '' : dados.path);
+    assinar(dados);
+  }
+  cloud.equipe = { id: eu.uid, ...equipe };
+  emit();
+}
 
 // ---------- Anexos ----------
 function idb() {

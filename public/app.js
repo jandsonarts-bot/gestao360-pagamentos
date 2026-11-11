@@ -1,4 +1,4 @@
-import { state, save, onChange, cloud, initCloud, login, logout, addAnexo, urlAnexo, delAnexo, arquivoAnexo, avisoZapAgora, restaurar, uid } from './store.js';
+import { state, save, onChange, cloud, initCloud, login, logout, addAnexo, urlAnexo, delAnexo, arquivoAnexo, avisoZapAgora, restaurar, salvarEquipe, uid } from './store.js';
 
 // ---------- utilidades ----------
 const app = document.getElementById('app');
@@ -358,7 +358,7 @@ function render() {
       <div class="brand"><img class="logo" src="logo.png" alt="Gestão 360"><div><b>Gestão 360</b><span>Pagamentos</span></div></div>
       <nav>${nav('nav')}</nav>
       <div class="cloud">${ic('nuvem')}<div>${cloud.user
-        ? `<b>Sincronizado</b><span>${esc(cloud.user.email || '')}</span><button class="link" data-act="logout">Sair</button>`
+        ? `<b>${cloud.equipe ? `Compartilhado · ${cloud.equipe.membros.length} pessoa${cloud.equipe.membros.length > 1 ? 's' : ''}` : 'Sincronizado'}</b><span>${esc(cloud.user.email || '')}</span><button class="link" data-act="equipe">Compartilhar</button><button class="link" data-act="logout">Sair</button>`
         : `<b>Modo local</b><span>Dados só neste navegador</span>`}<button class="link" data-act="backup">Backup</button></div></div>
     </aside>
     <main>
@@ -491,6 +491,7 @@ function dAlertas() {
       </div>
       ${al.length ? al.map(linha).join('') : vazio('Nenhum alerta', 'Nada vencido nem vencendo no período.')}
       <h4 class="sec">Dados</h4>
+      ${cloud.user ? `<button class="btn block primary" style="margin:0 0 8px" data-act="equipe">${ic('prestadores')}Compartilhar com outras pessoas</button>` : ''}
       <button class="btn block" style="margin-top:0" data-act="backup">Backup: baixar ou restaurar os dados</button>
       <h4 class="sec">WhatsApp</h4>
       <div class="g2">
@@ -566,6 +567,22 @@ async function baixar(meta) {
   toast(`Baixando ${meta.nome}`);
 }
 
+function dEquipe(lista) {
+  const eq = cloud.equipe, eu = (cloud.user?.email || '').toLowerCase();
+  const souDono = !eq || eq.id === cloud.user.uid;
+  const membros = lista || (eq ? eq.membros : [eu]);
+  abrir(`${cab('Compartilhar dados', souDono ? 'Quem estiver na lista vê e edita os mesmos pagamentos.' : `Você usa os dados compartilhados por ${esc(eq.donoEmail)}.`)}
+    <form data-form="equipe"><div class="body">
+      <h4>Pessoas com acesso</h4>
+      <div class="files">${membros.map(m => `<div class="file"><span class="mail">${esc(m)}${m === (eq?.donoEmail || eu) ? ' <em class="badge pago">dono</em>' : ''}</span>
+        ${souDono && m !== eu ? `<button type="button" class="xbtn sm" data-act="tirarMembro" data-m="${esc(m)}" aria-label="Remover ${esc(m)}">${ic('x')}</button>` : ''}
+        <input type="hidden" name="m" value="${esc(m)}"></div>`).join('')}</div>
+      ${souDono ? `${campo('Adicionar pessoa (e-mail da conta Google dela)', `<input name="novo" type="email" placeholder="nome@gmail.com" autocomplete="off">`)}
+      <p class="nota">A pessoa abre o app, entra com esse e-mail e já cai nos dados compartilhados. Anexos continuam em cada aparelho.</p>` : '<p class="nota">Só quem criou o compartilhamento pode incluir ou remover pessoas.</p>'}
+    </div><footer><button type="button" class="btn ghost" data-act="fechar">Fechar</button><span class="grow"></span>
+      ${souDono ? '<button class="btn primary" type="submit">Salvar</button>' : ''}</footer></form>`);
+}
+
 async function dVer(a) {
   const u = await urlAnexo(a);
   if (!u) return toast('Este arquivo foi anexado em outro aparelho.');
@@ -583,6 +600,8 @@ const acts = {
   kpi: el => { ui.view = 'mensais'; ui.filtro = el.dataset.f; ui.anim = true; render(); window.scrollTo(0, 0); },
   novo: dNovo,
   tema: dTema,
+  equipe: () => dEquipe(),
+  tirarMembro: el => dEquipe([...dlg.querySelectorAll('input[name=m]')].map(i => i.value).filter(m => m !== el.dataset.m)),
   cor: el => { tema = { ...tema, cor: el.dataset.c, custom: null }; aplicarTema(); dTema(); },
   modo: el => { tema = { ...tema, modo: el.dataset.m }; aplicarTema(); dTema(); },
   enviarFin: el => { const it = achar(el.dataset.kind, el.dataset.key); if (it) dEnviar(it); },
@@ -660,6 +679,12 @@ const acts = {
 };
 
 const forms = {
+  async equipe(v, f) {
+    const lista = [...f.querySelectorAll('input[name=m]')].map(i => i.value);
+    if (v.novo?.trim()) lista.push(v.novo);
+    await salvarEquipe(lista);
+    toast('Compartilhamento salvo'); dEquipe();
+  },
   async enviar(v, f, sub) {
     const it = atual(); if (!it) return;
     let r = 'marcar';
