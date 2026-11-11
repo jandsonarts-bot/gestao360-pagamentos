@@ -32,6 +32,7 @@ const I = {
   documentos: '<path d="M3 7a2 2 0 012-2h4l2 2.5h8a2 2 0 012 2V18a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
   zap: '<path d="M4 20l1.3-4A8 8 0 1112 20a8 8 0 01-3.9-1z"/>',
   paleta: '<path d="M12 3a9 9 0 100 18c1.2 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.2A3.8 3.8 0 0021 10.6C21 6.4 17 3 12 3z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="10" cy="7.5" r="1"/><circle cx="15" cy="7.5" r="1"/>',
+  baixar: '<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',
   nuvem: '<path d="M7 18a4.5 4.5 0 01-.6-9A6 6 0 0118 10.5a3.8 3.8 0 01-.5 7.5z"/>',
 };
 const ic = n => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
@@ -327,6 +328,7 @@ function vDocs() {
       ${d.descricao ? `<p class="desc">${esc(d.descricao)}</p>` : ''}
       ${d.enviadoEm ? `<span class="badge enviado">Enviado em ${fmtData(d.enviadoEm)}</span>` : ''}
       <div class="pa"><button class="btn sm" data-act="verDoc" data-id="${d.id}">Ver</button>
+        <button class="btn sm" data-act="baixarDoc" data-id="${d.id}">${ic('baixar')}Baixar</button>
         <button class="btn sm primary" data-act="enviarDoc" data-id="${d.id}">${ic('enviar')}Enviar</button>
         <span class="grow"></span><button class="btn sm danger" data-act="excluirDoc" data-id="${d.id}">Excluir</button></div></div>`).join('')}</div>`
       : `<div class="card">${vazio('Nenhum documento arquivado', 'Guarde contratos, notas e comprovantes com uma descrição e envie quando precisar.')}</div>`}`;
@@ -406,6 +408,7 @@ function dDetalhe(it) {
       ${d?.obs ? `<p class="obs">${esc(d.obs)}</p>` : ''}
       <h4>Anexos</h4>
       <div class="files">${it.anexos.map(a => `<div class="file"><button class="link" data-act="ver" data-aid="${a.id}">${ic('clip')}${esc(a.nome)}</button>
+        <button class="btn sm" data-act="baixarAnexo" data-aid="${a.id}">${ic('baixar')}Baixar</button>
         <button class="xbtn sm" data-act="delAnexo" data-aid="${a.id}" aria-label="Remover anexo">${ic('x')}</button></div>`).join('') || '<p class="muted">Nenhum arquivo anexado.</p>'}</div>
       <label class="drop">${ic('clip')}<span>Anexar pedido, boleto, nota ou comprovante</span><input type="file" multiple data-change="anexar" accept="image/*,.pdf,.xml,.doc,.docx,.xls,.xlsx"></label>
     </div>
@@ -554,6 +557,15 @@ function dTema() {
     </div>`);
 }
 
+async function baixar(meta) {
+  const u = await urlAnexo(meta);
+  if (!u) return toast('Este arquivo foi anexado em outro aparelho.');
+  const a = document.createElement('a');
+  a.href = u; a.download = meta.nome; a.target = '_blank'; a.rel = 'noopener';
+  document.body.append(a); a.click(); a.remove();
+  toast(`Baixando ${meta.nome}`);
+}
+
 async function dVer(a) {
   const u = await urlAnexo(a);
   if (!u) return toast('Este arquivo foi anexado em outro aparelho.');
@@ -636,6 +648,8 @@ const acts = {
   },
   copiar: el => navigator.clipboard.writeText(el.dataset.t).then(() => toast('Copiado'), () => toast('Não foi possível copiar')),
   ver: el => { const a = atual()?.anexos.find(x => x.id === el.dataset.aid); if (a) dVer(a); },
+  baixarAnexo: el => { const a = atual()?.anexos.find(x => x.id === el.dataset.aid); if (a) baixar(a); },
+  baixarDoc: el => { const d = state.docs.find(x => x.id === el.dataset.id); if (d) baixar(d.anexo); },
   delAnexo: el => {
     const it = atual(); if (!it) return;
     const r = rec(it), a = r.anexos.find(x => x.id === el.dataset.aid);

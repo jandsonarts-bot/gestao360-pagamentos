@@ -11,3 +11,7 @@ export const firebaseConfig = {
   messagingSenderId: "931045434441",
   appId: "1:931045434441:web:d35e84e1bf63b1405e0b98"
 };
+
+// Anexos na nuvem (Firebase Storage). Só funciona com o Storage ativado no projeto (plano Blaze).
+// Enquanto estiver false, cada anexo fica guardado no aparelho onde foi enviado.
+export const usarStorage = false;

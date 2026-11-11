@@ -1,5 +1,5 @@
 // Camada de dados: localStorage sempre; Firestore + Storage quando o Firebase está configurado.
-import { firebaseConfig } from './firebase-config.js';
+import { firebaseConfig, usarStorage } from './firebase-config.js';
 
 const LS = 'gestao360:v1';
 const FB = 'https://www.gstatic.com/firebasejs/10.14.1/';
@@ -71,6 +71,7 @@ export async function initCloud() {
     ]);
     const app = initializeApp(firebaseConfig);
     fb = { app, A, F, S, auth: A.getAuth(app), db: F.getFirestore(app), st: S.getStorage(app) };
+    fb.st.maxUploadRetryTime = 8000; fb.st.maxOperationRetryTime = 8000;
     A.onAuthStateChanged(fb.auth, user => {
       cloud.user = user; cloud.pronto = true;
       unsub?.(); unsub = null;
@@ -116,7 +117,7 @@ async function idbOp(modo, fn) {
 
 export async function addAnexo(file) {
   const meta = { id: uid(), nome: file.name, tipo: file.type || '', tam: file.size };
-  if (fb && cloud.user) {
+  if (usarStorage && fb && cloud.user) {
     try {
       const r = fb.S.ref(fb.st, `users/${cloud.user.uid}/anexos/${meta.id}-${file.name}`);
       await fb.S.uploadBytes(r, file);
