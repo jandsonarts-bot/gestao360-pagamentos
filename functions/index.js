@@ -68,7 +68,7 @@ function alertas(state, hoje) {
   }
   return itens
     .map(i => ({ ...i, d: dias(i.venc, hoje) }))
-    .filter(i => i.d < 0 || (i.d <= prazo && !i.enviado)) // o que já está no financeiro só volta se atrasar
+    .filter(i => !i.enviado && i.d <= prazo) // o que já foi enviado ao financeiro não gera mais aviso
     .sort((a, b) => a.venc.localeCompare(b.venc));
 }
 

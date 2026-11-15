@@ -108,9 +108,9 @@ function itensDoMes(ym) {
 
 function status(it) {
   if (it.pago) return 'pago';
+  if (it.enviado) return 'enviado';   // já está com o financeiro: não cobra mais atraso nem alerta
   const d = diff(it.venc);
   if (d < 0) return 'atrasado';
-  if (it.enviado) return 'enviado';
   if (d === 0) return 'hoje';
   return d <= state.config.diasAlerta ? 'proximo' : 'pendente';
 }
@@ -153,13 +153,13 @@ async function subir(files) {
 // ---------- componentes ----------
 function badge(it) {
   const s = status(it), d = diff(it.venc);
-  const t = s === 'pago' ? 'Pago' : s === 'enviado' ? 'No financeiro' : s === 'atrasado' ? `Atrasado ${-d}d${it.enviado ? ' · no financeiro' : ''}` : s === 'hoje' ? 'Vence hoje'
+  const t = s === 'pago' ? 'Pago' : s === 'enviado' ? `Enviado ao financeiro${it.enviado.length === 10 ? ' · ' + fmtData(it.enviado).slice(0, 5) : ''}` : s === 'atrasado' ? `Atrasado ${-d}d` : s === 'hoje' ? 'Vence hoje'
     : s === 'proximo' ? (d === 1 ? 'Vence amanhã' : `Vence em ${d}d`) : 'A vencer';
   return `<span class="badge ${s}">${t}</span>`;
 }
 const ref = it => `data-kind="${it.kind}" data-key="${esc(it.key)}"`;
 const btnFin = it => it.pago || it.enviado ? '' : `<button class="btn sm ico fin" data-act="enviarFin" ${ref(it)} title="Enviar ao financeiro">${ic('enviar')}<span>Financeiro</span></button>`;
-const btnBaixa = it => it.pago ? '' : `<button class="btn sm primary ico" data-act="pagar" ${ref(it)} title="Dar baixa">${ic('check')}<span>Dar baixa</span></button>`;
+const btnBaixa = it => it.pago || it.enviado ? '' : `<button class="btn sm primary ico" data-act="pagar" ${ref(it)} title="Dar baixa">${ic('check')}<span>Dar baixa</span></button>`;
 const acoes = it => btnFin(it) + btnBaixa(it);
 
 // ---------- WhatsApp ----------
@@ -266,7 +266,8 @@ function vPainel() {
   const soma = f => its.filter(f).reduce((s, i) => s + (+i.valor || 0), 0);
   const total = soma(() => true), pago = soma(i => i.pago);
   const atras = its.filter(i => status(i) === 'atrasado');
-  const pct = total ? Math.round(pago / total * 100) : 0;
+  const env = its.filter(i => i.enviado && !i.pago), aEnviar = its.filter(i => !i.enviado && !i.pago);
+  const pct = total ? Math.round((total - soma(i => !i.enviado && !i.pago)) / total * 100) : 0;
   const al = alertas();
   const alKeys = new Set(al.map(i => i.key));
   const prox = its.filter(i => !i.pago && !alKeys.has(i.key)).slice(0, 6);
@@ -278,11 +279,11 @@ function vPainel() {
   ${avisoPainel()}
   <div class="kpis">
     <button class="kpi" data-act="kpi" data-f="todos"><span>Previsto no mês</span><b>${brl(total)}</b><small>${its.length} pagamentos</small></button>
-    <button class="kpi ok" data-act="kpi" data-f="pagos"><span>Pago</span><b>${brl(pago)}</b><small>${its.filter(i => i.pago).length} quitados</small></button>
-    <button class="kpi" data-act="kpi" data-f="abertos"><span>A pagar</span><b>${brl(total - pago)}</b><small>${its.filter(i => !i.pago).length} em aberto · ${its.filter(i => i.enviado && !i.pago).length} no financeiro</small></button>
-    <button class="kpi ${atras.length ? 'bad' : ''}" data-act="kpi" data-f="atrasados"><span>Atrasado</span><b>${brl(atras.reduce((s, i) => s + +i.valor, 0))}</b><small>${atras.length ? atras.length + ' vencidos' : 'nada vencido'}</small></button>
+    <button class="kpi ok" data-act="kpi" data-f="financeiro"><span>Enviado ao financeiro</span><b>${brl(env.reduce((s, i) => s + +i.valor, 0))}</b><small>${env.length} enviado${env.length === 1 ? '' : 's'}${its.some(i => i.pago) ? ` · ${its.filter(i => i.pago).length} já pago${its.filter(i => i.pago).length === 1 ? '' : 's'}` : ''}</small></button>
+    <button class="kpi" data-act="kpi" data-f="aenviar"><span>A enviar</span><b>${brl(aEnviar.reduce((s, i) => s + +i.valor, 0))}</b><small>${aEnviar.length} ainda sem envio ao financeiro</small></button>
+    <button class="kpi ${atras.length ? 'bad' : ''}" data-act="kpi" data-f="atrasados"><span>Atrasado</span><b>${brl(atras.reduce((s, i) => s + +i.valor, 0))}</b><small>${atras.length ? atras.length + ' vencido' + (atras.length > 1 ? 's, sem envio' : ', sem envio') : 'nada vencido sem envio'}</small></button>
   </div>
-  <div class="card prog"><div class="prog-h"><span>Progresso de ${nomeMes(ui.mes)}</span><b>${pct}% pago</b></div>
+  <div class="card prog"><div class="prog-h"><span>Progresso de ${nomeMes(ui.mes)}</span><b>${pct}% enviado</b></div>
     <div class="bar"><i style="width:${pct}%"></i></div></div>
   ${grafico3()}
   <div class="cols">
@@ -336,12 +337,13 @@ function vMensais() {
     if (ui.filtro === 'pagos' && !i.pago) return false;
     if (ui.filtro === 'atrasados' && s !== 'atrasado') return false;
     if (ui.filtro === 'financeiro' && !(i.enviado && !i.pago)) return false;
+    if (ui.filtro === 'aenviar' && (i.enviado || i.pago)) return false;
     return !q || `${i.titulo} ${i.sub} ${i.e.cnpj}`.toLowerCase().includes(q);
   });
   const chip = (k, t) => `<button class="pill ${ui.filtro === k ? 'on' : ''}" data-act="filtro" data-f="${k}">${t}</button>`;
   return `<div class="tools">
       <input id="busca" class="search" type="search" placeholder="Buscar empresa, área ou CNPJ" value="${esc(ui.busca)}" data-input="busca">
-      <div class="pills">${chip('todos', 'Todos')}${chip('abertos', 'Em aberto')}${chip('financeiro', 'No financeiro')}${chip('pagos', 'Pagos')}${chip('atrasados', 'Atrasados')}</div>
+      <div class="pills">${chip('todos', 'Todos')}${chip('aenviar', 'A enviar')}${chip('financeiro', 'Enviados ao financeiro')}${chip('abertos', 'Em aberto')}${chip('pagos', 'Pagos')}${chip('atrasados', 'Atrasados')}</div>
       <button class="btn primary" data-act="novaEmpresa" data-cat="mensal">${ic('mais')}Empresa</button>
     </div>
     <div class="card so-cel">${its.length ? its.map(linha).join('') + `<div class="tot"><span>${its.length} de ${todos.length} contratos</span><b>${brl(its.reduce((s, i) => s + +i.valor, 0))}</b></div>` : vazio('Nada por aqui', 'Ajuste a busca ou o filtro.')}</div>
@@ -489,7 +491,7 @@ function dDetalhe(it) {
       <button class="btn ghost" data-act="${it.kind === 'pedido' ? 'editarPedido' : 'editarEmpresa'}" data-id="${it.kind === 'pedido' ? it.key : e.id}">Editar</button>
       <span class="grow"></span>
       ${it.pago ? `<button class="btn" data-act="desfazer">Desfazer baixa</button>` : `${it.enviado ? `<button class="btn" data-act="desfazerEnvio">Desfazer envio</button>` : `<button class="btn fin" data-act="enviarFin" ${ref(it)}>${ic('enviar')}Financeiro</button>`}
-        <button class="btn primary" data-act="pagar" ${ref(it)}>${ic('check')}Dar baixa</button>`}
+        <button class="btn ${it.enviado ? '' : 'primary'}" data-act="pagar" ${ref(it)} title="Use só quando o financeiro confirmar o pagamento">${ic('check')}${it.enviado ? 'Financeiro pagou' : 'Dar baixa'}</button>`}
     </footer>`);
 }
 
