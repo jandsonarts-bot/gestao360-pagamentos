@@ -1,4 +1,5 @@
-import { state, save, onChange, cloud, initCloud, login, logout, addAnexo, urlAnexo, delAnexo, arquivoAnexo, avisoZapAgora, restaurar, salvarEquipe, uid } from './store.js';
+import { souFuncionario, state, save, onChange, cloud, initCloud, login, logout, addAnexo, urlAnexo, delAnexo, arquivoAnexo, avisoZapAgora, restaurar, salvarEquipe, uid } from './store.js';
+import * as IC from './imp-calc.js';
 import { initImp, vImpressoras, impActs, impForms, impChanges, impInputs, agendaDia, agendaPainel, avisoPainel, notificarImp } from './impressoras.js';
 
 // ---------- utilidades ----------
@@ -203,6 +204,63 @@ function linha(it) {
 const vazio = (t, s = '') => `<div class="empty"><b>${t}</b><span>${s}</span></div>`;
 
 // ---------- telas ----------
+
+// ---------- gráfico interativo dos últimos 3 meses (Painel) ----------
+const G_MODOS = { total: 'Pago x A pagar', tipo: 'Por tipo', imp: 'Impressoras' };
+let gDados = [];
+function dadosMes(m) {
+  const its = itensDoMes(m), soma = f => its.filter(f).reduce((s, i) => s + (+i.valor || 0), 0);
+  const pago = soma(i => i.pago), total = soma(() => true);
+  const imp = IC.resumoMes(state.imp, m);
+  return { m, total, pago, aberto: total - pago, n: its.length, FIXO: soma(i => i.tipo === 'FIXO'), VARIAVEL: soma(i => i.tipo === 'VARIÁVEL'), PEDIDO: soma(i => i.tipo === 'PEDIDO'),
+    imp: imp.temDado ? imp.total / 100 : 0, impPag: imp.pagCor + imp.pagPb, impParcial: imp.temDado && imp.parcial };
+}
+function grafico3() {
+  const modo = (ui.g ??= { modo: 'total' }).modo;
+  gDados = [-2, -1, 0].map(n => dadosMes(addMes(ui.mes, n)));
+  const SERIES = {
+    total: [['pago', 'Pago', 'var(--ok)'], ['aberto', 'A pagar', 'var(--c1)']],
+    tipo: [['FIXO', 'Fixos', 'var(--c1)'], ['VARIAVEL', 'Variáveis', 'var(--warn)'], ['PEDIDO', 'Pedidos', 'var(--fin)']],
+    imp: [['imp', 'Impressoras (COPYGRAF)', 'var(--c2)']],
+  }[modo];
+  const tot = d => SERIES.reduce((s, [k]) => s + (d[k] || 0), 0);
+  const topo = (() => { const mx = Math.max(...gDados.map(tot), 1), p = 10 ** Math.floor(Math.log10(mx)), r = mx / p; return (r <= 1 ? 1 : r <= 2 ? 2 : r <= 5 ? 5 : 10) * p; })();
+  const W = 720, H = 250, L = 66, R = 14, T = 26, B = 34, gw = (W - L - R) / 3, bw = Math.min(120, gw * .62), y = v => T + (H - T - B) * (1 - v / topo);
+  let g = '';
+  for (let i = 0; i <= 4; i++) { const v = topo * i / 4; g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="g-linha"/><text x="${L - 8}" y="${y(v) + 4}" class="g-eixo" text-anchor="end">${v >= 1000 ? (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mil' : Math.round(v)}</text>`; }
+  gDados.forEach((d, i) => {
+    const x = L + gw * i + (gw - bw) / 2, atual = d.m === ui.mes;
+    let base = 0;
+    g += `<g class="gbar ${atual ? 'sel' : ''}" data-act="gmes" data-mes="${d.m}" data-gmes="${d.m}" role="button" tabindex="0" aria-label="${nomeMes(d.m)}: ${brl(tot(d))}">`;
+    g += `<rect x="${x - 10}" y="${T - 14}" width="${bw + 20}" height="${H - B - T + 14}" class="g-fundo"/>`;
+    for (const [k, , cor] of SERIES) {
+      const v = d[k] || 0; if (v <= 0) continue;
+      g += `<rect x="${x}" y="${y(base + v)}" width="${bw}" height="${Math.max(2, y(base) - y(base + v))}" rx="6" fill="${cor}"/>`;
+      base += v;
+    }
+    g += `<text x="${x + bw / 2}" y="${y(base) - 8}" class="g-val" text-anchor="middle">${brl(base)}</text>`;
+    g += `<text x="${x + bw / 2}" y="${H - 11}" class="g-eixo ${atual ? 'g-atual' : ''}" text-anchor="middle">${MESES[+d.m.slice(5) - 1].slice(0, 3)}/${d.m.slice(2, 4)}</text></g>`;
+  });
+  const pill = ([k, t]) => `<button class="pill ${modo === k ? 'on' : ''}" data-act="gmodo" data-m="${k}">${t}</button>`;
+  return `<div class="card grafico3"><div class="g3-topo"><h3>Valores dos últimos 3 meses</h3><div class="pills">${Object.entries(G_MODOS).map(pill).join('')}</div></div>
+    <svg class="grafico" viewBox="0 0 ${W} ${H}" role="img" aria-label="Valores mensais dos últimos 3 meses">${g}</svg>
+    <div class="legend">${SERIES.map(([, t, c]) => `<span><i style="background:${c}"></i>${t}</span>`).join('')}</div>
+    <div class="g-tip" id="gtip" aria-live="polite">${tipoGrafico(gDados.find(d => d.m === ui.mes), modo)}</div>
+    <p class="nota">Passe o mouse ou toque numa barra para ver os valores; clique para abrir aquele mês.</p></div>`;
+}
+function tipoGrafico(d, modo) {
+  if (!d) return '';
+  const L = (t, v) => `<span><em>${t}</em><b>${brl(v)}</b></span>`;
+  const corpo = modo === 'tipo' ? L('Fixos', d.FIXO) + L('Variáveis', d.VARIAVEL) + L('Pedidos', d.PEDIDO) + L('Total', d.total)
+    : modo === 'imp' ? L('Impressoras', d.imp) + `<span><em>Páginas</em><b>${d.impPag.toLocaleString('pt-BR')}</b></span>` + (d.impParcial ? '<span><em>Situação</em><b>parcial</b></span>' : '')
+    : L('Previsto', d.total) + L('Pago', d.pago) + L('A pagar', d.aberto) + `<span><em>Pagamentos</em><b>${d.n}</b></span>`;
+  return `<strong>${nomeMes(d.m)}</strong>${corpo}`;
+}
+document.addEventListener('pointerover', ev => {
+  const b = ev.target.closest?.('[data-gmes]'), tip = document.getElementById('gtip');
+  if (b && tip) tip.innerHTML = tipoGrafico(gDados.find(d => d.m === b.dataset.gmes), ui.g?.modo || 'total');
+});
+
 function vPainel() {
   const its = itensDoMes(ui.mes);
   const soma = f => its.filter(f).reduce((s, i) => s + (+i.valor || 0), 0);
@@ -226,6 +284,7 @@ function vPainel() {
   </div>
   <div class="card prog"><div class="prog-h"><span>Progresso de ${nomeMes(ui.mes)}</span><b>${pct}% pago</b></div>
     <div class="bar"><i style="width:${pct}%"></i></div></div>
+  ${grafico3()}
   <div class="cols">
     <div class="card"><h3>Precisa de atenção <em class="${al.length ? 'warn' : ''}">${al.length}</em></h3>
       ${al.length ? al.map(linha).join('') : vazio('Tudo em dia', `Nenhum pagamento vencido ou vencendo em ${state.config.diasAlerta} dias.`)}</div>
@@ -252,8 +311,8 @@ function vAgenda() {
     const data = `${ui.mes}-${pad(d)}`, l = porDia[d] || [], imp = agendaDia(data); // imp: dia de leitura das impressoras
     cel += `<button class="day ${data === h ? 'today' : ''} ${data === ui.dia ? 'sel' : ''}" data-act="dia" data-dia="${data}">
       <span class="num">${d}</span>
-      <span class="chips">${imp ? `<span class="chip ${imp.st}">Leitura impressoras</span>` : ''}${l.slice(0, 3).map(i => `<span class="chip ${status(i)}">${esc(i.titulo)}</span>`).join('')}${l.length > 3 ? `<span class="more">+${l.length - 3}</span>` : ''}</span>
-      <span class="dots">${imp ? `<i class="${imp.st}"></i>` : ''}${l.slice(0, 5).map(i => `<i class="${status(i)}"></i>`).join('')}</span>
+      <span class="chips">${imp ? imp.itens.map(i => `<span class="chip ${i.st}">${i.rotulo}</span>`).join('') : ''}${l.slice(0, 3).map(i => `<span class="chip ${status(i)}">${esc(i.titulo)}</span>`).join('')}${l.length > 3 ? `<span class="more">+${l.length - 3}</span>` : ''}</span>
+      <span class="dots">${imp ? imp.itens.map(i => `<i class="${i.st}"></i>`).join('') : ''}${l.slice(0, 5).map(i => `<i class="${status(i)}"></i>`).join('')}</span>
     </button>`;
   }
   const sel = porDia[+ui.dia.slice(8)] || [];
@@ -350,15 +409,18 @@ const VIEWS = {
 
 function render() {
   const act = document.activeElement, fid = act?.id, pos = act?.selectionStart;
-  if (cloud.ativo && !cloud.user) {
+  if (cloud.ativo && (!cloud.user || cloud.carregando)) {
     app.innerHTML = `<div class="login"><div class="card"><img class="logo big" src="logo.png" alt="Gestão 360"><h1>Gestão 360</h1>
       <p>Pagamentos, pedidos e agenda em um só lugar.</p>
-      ${cloud.pronto ? `<button class="btn primary block" data-act="login">Entrar com Google</button>` : '<p class="muted">Conectando…</p>'}
+      ${cloud.pronto && !cloud.user ? `<button class="btn primary block" data-act="login">Entrar com Google</button>` : '<p class="muted">Conectando…</p>'}
       ${cloud.erro ? `<p class="err">${esc(cloud.erro)}</p>` : ''}</div></div>`;
     return;
   }
-  const nAl = alertas().length;
-  const nav = cls => Object.entries(VIEWS).map(([k, [t, , curto]]) =>
+  const func = souFuncionario();                       // funcionário: só a aba Impressoras
+  if (func) ui.view = 'impressoras';
+  const nAl = func ? 0 : alertas().length;
+  const VV = func ? { impressoras: VIEWS.impressoras } : VIEWS;
+  const nav = cls => Object.entries(VV).map(([k, [t, , curto]]) =>
     `<button class="${cls} ${ui.view === k ? 'on' : ''}" data-act="ir" data-v="${k}">${ic(k)}<span>${cls === 'tab' && curto || t}</span></button>`).join('');
   const comMes = !['pedidos', 'prestadores', 'documentos'].includes(ui.view);
   const anim = ui.anim ? 'in' : ''; ui.anim = false;
@@ -366,9 +428,11 @@ function render() {
     <aside class="side">
       <div class="brand"><img class="logo" src="logo.png" alt="Gestão 360"><div><b>Gestão 360</b><span>Pagamentos</span></div></div>
       <nav>${nav('nav')}</nav>
-      <div class="cloud">${ic('nuvem')}<div>${cloud.user
+      <div class="cloud">${ic('nuvem')}<div>${func
+        ? `<b>Acesso de funcionário</b><span>${esc(cloud.user.email || '')}</span><button class="link" data-act="logout">Sair</button>`
+        : cloud.user
         ? `<b>${cloud.equipe ? `Compartilhado · ${cloud.equipe.membros.length} pessoa${cloud.equipe.membros.length > 1 ? 's' : ''}` : 'Sincronizado'}</b><span>${esc(cloud.user.email || '')}</span><button class="link" data-act="equipe">Compartilhar</button><button class="link" data-act="logout">Sair</button>`
-        : `<b>Modo local</b><span>Dados só neste navegador</span>`}<button class="link" data-act="backup">Backup</button></div></div>
+        : `<b>Modo local</b><span>Dados só neste navegador</span>`}${func ? '' : '<button class="link" data-act="backup">Backup</button>'}</div></div>
     </aside>
     <main>
       <header class="top">
@@ -376,13 +440,13 @@ function render() {
         ${comMes ? `<div class="mes"><button data-act="mes" data-d="-1" aria-label="Mês anterior">${ic('esq')}</button>
           <button class="lbl" data-act="mes" data-d="0" title="Voltar para o mês atual">${nomeMes(ui.mes)}</button>
           <button data-act="mes" data-d="1" aria-label="Próximo mês">${ic('dir')}</button></div>` : '<span class="grow"></span>'}
-        <button class="btn primary novo" data-act="novo" title="Novo pagamento">${ic('mais')}<span>Novo pagamento</span></button>
+        ${func ? '' : `<button class="btn primary novo" data-act="novo" title="Novo pagamento">${ic('mais')}<span>Novo pagamento</span></button>`}
         <button class="bell tema" data-act="tema" aria-label="Aparência: cor e modo" title="Aparência">${ic('paleta')}</button>
-        <button class="bell ${nAl ? 'on' : ''}" data-act="alertas" aria-label="Alertas de pagamento">${ic('sino')}${nAl ? `<em>${nAl}</em>` : ''}</button>
+        ${func ? '' : `<button class="bell ${nAl ? 'on' : ''}" data-act="alertas" aria-label="Alertas de pagamento">${ic('sino')}${nAl ? `<em>${nAl}</em>` : ''}</button>`}
       </header>
       <section class="view ${anim}">${VIEWS[ui.view][1]()}</section>
     </main>
-    <nav class="tabs">${nav('tab')}</nav>
+    <nav class="tabs" ${func ? 'style="grid-template-columns:1fr"' : ''}>${nav('tab')}</nav>
   </div>`;
   if (anim) app.querySelectorAll('.kpi b').forEach(contar);
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch {} } }
@@ -607,6 +671,8 @@ const atual = () => ctx && achar(ctx.kind, ctx.key);
 const reabrir = () => { const it = atual(); it ? dDetalhe(it) : fechar(); };
 
 const acts = {
+  gmodo: el => { (ui.g ??= {}).modo = el.dataset.m; render(); },
+  gmes: el => { ui.mes = el.dataset.mes; ui.dia = null; ui.anim = false; render(); },
   ir: el => { ui.view = el.dataset.v; ui.anim = true; render(); window.scrollTo(0, 0); },
   kpi: el => { ui.view = 'mensais'; ui.filtro = el.dataset.f; ui.anim = true; render(); window.scrollTo(0, 0); },
   novo: dNovo,
@@ -749,6 +815,8 @@ Object.assign(forms, impForms);
 document.addEventListener('click', ev => {
   if (ev.target === dlg) return fechar();
   const el = ev.target.closest('[data-act]');
+  // funcionário só usa a aba Impressoras e a aparência; qualquer outra ação é ignorada
+  if (el && souFuncionario() && !/^(imp|fechar$|logout$|login$|tema$|cor$|modo$|mes$|voltar$|instalar$)/.test(el.dataset.act)) return;
   if (el && acts[el.dataset.act]) acts[el.dataset.act](el, ev);
 });
 document.addEventListener('submit', async ev => {
@@ -820,7 +888,7 @@ document.addEventListener('keydown', ev => {
   if (!app.querySelector('.shell')) return;
   if (!semMes() && ev.key === 'ArrowLeft') mudarMes(-1);
   else if (!semMes() && ev.key === 'ArrowRight') mudarMes(1);
-  else if (ev.key.toLowerCase() === 'n') dNovo();
+  else if (ev.key.toLowerCase() === 'n' && !souFuncionario()) dNovo();
 });
 // celular: deslizar para os lados troca o mês
 let tx = null, ty = 0;
@@ -837,7 +905,7 @@ window.addEventListener('beforeinstallprompt', ev => { ev.preventDefault(); inst
 window.addEventListener('appinstalled', () => { instalar = null; render(); toast('App instalado'); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
-initImp({ esc, ic, abrir, fechar, cab, campo, toast, render, ui, subir, dVer, baixar, dPedido, hoje, fmtData, nomeMes, MESES, vazio });
+initImp({ zapUrl, esc, ic, abrir, fechar, cab, campo, toast, render, ui, subir, dVer, baixar, dPedido, hoje, fmtData, nomeMes, MESES, vazio });
 aplicarTema();
 onChange(render);
 render();

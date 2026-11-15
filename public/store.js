@@ -7,10 +7,15 @@ const FB = 'https://www.gstatic.com/firebasejs/10.14.1/';
 const listeners = new Set();
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-export const cloud = { ativo: !!firebaseConfig, pronto: !firebaseConfig, user: null, equipe: null, erro: null };
+// papel: 'dono' (vê tudo) | 'funcionario' (vê só a aba Impressoras, liberada pelo dono)
+export const cloud = { ativo: !!firebaseConfig, pronto: !firebaseConfig, user: null, equipe: null, erro: null, papel: 'dono', impDono: null, carregando: false };
 export let state = load();
+export const souFuncionario = () => cloud.papel === 'funcionario';
 
-let fb = null, unsub = null, timer = null;
+let fb = null, unsub = null, timer = null, unsubImp = null, impRef = null, impPronto = false, timerImp = null;
+const jsonImp = () => JSON.stringify({ ...state.imp, atualizado: 0 });
+let impJson = jsonImp();
+const temDadosImp = i => !!(i && (i.impressoras?.length || i.leituras?.length));
 
 function seed() {
   // O app começa vazio: os cadastros ficam na conta de cada usuário, nunca no código.
@@ -48,10 +53,79 @@ export const onChange = fn => listeners.add(fn);
 
 export function save() {
   state.atualizado = Date.now();
+  const j = jsonImp();
+  if (j !== impJson) { impJson = j; state.imp.atualizado = Date.now(); clearTimeout(timerImp); timerImp = setTimeout(pushImp, 500); }
   persistLocal();
   emit();
   clearTimeout(timer);
   timer = setTimeout(pushCloud, 500);
+}
+
+// Dados das impressoras: ficam também num documento só deles (impressoras/{dono}/dados/principal),
+// que o dono pode liberar para funcionários sem mostrar o resto do sistema.
+async function pushImp() {
+  if (!fb || !cloud.user || !impRef || !impPronto) return;
+  try { await fb.F.setDoc(impRef, JSON.parse(JSON.stringify(state.imp))); cloud.erroImp = null; }
+  catch (e) { cloud.erroImp = e.message; if (souFuncionario()) { cloud.erro = e.message; emit(); } else console.warn('Impressoras: não sincronizou o documento próprio:', e.message); }
+}
+
+function assinarImp(dono) {
+  const { F, db } = fb;
+  unsubImp?.();
+  impRef = F.doc(db, 'impressoras', dono, 'dados', 'principal');
+  impPronto = false;
+  unsubImp = F.onSnapshot(impRef, snap => {
+    if (snap.metadata.hasPendingWrites) return;
+    const d = snap.exists() ? snap.data() : null, atual = state.imp.atualizado || 0;
+    impPronto = true;
+    if (d && (d.atualizado || 0) > atual) {
+      state.imp = normalizarImp(d); impJson = jsonImp(); persistLocal(); emit();
+      if (!souFuncionario()) pushCloud();            // mantém a cópia dentro do documento principal em dia
+    } else if ((!d && temDadosImp(state.imp)) || (d && (d.atualizado || 0) < atual)) pushImp();
+  }, e => {
+    impPronto = false; cloud.erroImp = e.message;
+    if (souFuncionario()) { cloud.erro = e.message; emit(); } else console.warn('Impressoras: leitura do documento próprio falhou:', e.message);
+  });
+}
+
+async function acharFuncionario() {
+  const { F, db } = fb;
+  try {
+    const qs = await F.getDocs(F.query(F.collection(db, 'impressoras'), F.where('funcionarios', 'array-contains', meuEmail()), F.limit(1)));
+    if (!qs.empty) return { id: qs.docs[0].id, ...qs.docs[0].data() };
+  } catch (e) { console.warn('Acesso de funcionário não consultado:', e.message); }
+  return null;
+}
+
+function entrarComoFuncionario(f) {
+  cloud.papel = 'funcionario'; cloud.impDono = f.id; cloud.donoEmail = f.donoEmail || '';
+  // nunca mostra os dados de outra pessoa que usou este navegador antes
+  const mesmo = localStorage.getItem('gestao360:imp-dono') === f.id;
+  const imp = mesmo ? state.imp : null;
+  state = seed(); if (imp) state.imp = normalizarImp(imp);
+  impJson = jsonImp();
+  localStorage.setItem('gestao360:imp-dono', f.id); localStorage.setItem(LS_ORIGEM, '');
+  persistLocal();
+  assinarImp(f.id);
+}
+
+export async function lerFuncionarios() {
+  if (!fb || !cloud.user) return [];
+  const s = await fb.F.getDoc(fb.F.doc(fb.db, 'impressoras', cloud.user.uid));
+  return s.exists() ? (s.data().funcionarios || []) : [];
+}
+
+// Só o dono (quem usa sozinho ou quem criou o compartilhamento) libera funcionários.
+export async function salvarFuncionarios(emails) {
+  if (!fb || !cloud.user) throw new Error('Entre na sua conta primeiro.');
+  const eu = cloud.user;
+  if (souFuncionario() || (cloud.equipe && cloud.equipe.id !== eu.uid)) throw new Error('Só o dono do sistema libera funcionários.');
+  const lista = [...new Set(emails.map(e => e.trim().toLowerCase()).filter(Boolean))];
+  const invalido = lista.find(e => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+  if (invalido) throw new Error(`E-mail inválido: ${invalido}`);
+  if (lista.includes(meuEmail())) throw new Error('Seu próprio e-mail não precisa ser incluído.');
+  await fb.F.setDoc(fb.F.doc(fb.db, 'impressoras', eu.uid), { dono: eu.uid, donoEmail: meuEmail(), funcionarios: lista });
+  return lista;
 }
 
 // ---------- Firebase ----------
@@ -90,7 +164,10 @@ function assinar(novoRef) {
     // A cópia local só pode ser enviada para o mesmo documento de onde veio.
     const mesmaOrigem = localStorage.getItem(LS_ORIGEM) === ref.path;
     if (d && (!mesmaOrigem || (d.atualizado || 0) > (state.atualizado || 0))) {
-      state = normalizar(d); persistLocal(); localStorage.setItem(LS_ORIGEM, ref.path); emit();
+      const impAtual = state.imp;                      // a cópia das impressoras mais nova vence
+      state = normalizar(d);
+      if ((impAtual.atualizado || 0) > (state.imp.atualizado || 0) && (mesmaOrigem || !temDadosImp(state.imp))) state.imp = impAtual;
+      impJson = jsonImp(); persistLocal(); localStorage.setItem(LS_ORIGEM, ref.path); emit();
     } else if (d && (d.atualizado || 0) < (state.atualizado || 0)) {
       pushCloud();
     } else if (!d && ref.path.startsWith('users/')) {
@@ -113,15 +190,24 @@ export async function initCloud() {
     fb = { app, A, F, S, auth: A.getAuth(app), db: F.getFirestore(app), st: S.getStorage(app) };
     fb.st.maxUploadRetryTime = 8000; fb.st.maxOperationRetryTime = 8000;
     A.onAuthStateChanged(fb.auth, async user => {
-      cloud.user = user; cloud.pronto = true; cloud.equipe = null;
-      unsub?.(); unsub = null; ref = null;
+      cloud.user = user; cloud.pronto = true; cloud.equipe = null; cloud.carregando = !!user;
+      cloud.papel = 'dono'; cloud.impDono = null; cloud.erroImp = null;
+      unsub?.(); unsub = null; ref = null; unsubImp?.(); unsubImp = null; impRef = null; impPronto = false;
       emit();
       if (!user) return;
       cloud.equipe = await acharEquipe();
       if (cloud.user !== user) return; // saiu ou trocou de conta enquanto consultava
+      if (!cloud.equipe) {
+        const f = await acharFuncionario();
+        if (cloud.user !== user) return;
+        if (f && f.id !== user.uid) { entrarComoFuncionario(f); cloud.carregando = false; emit(); return; }
+      }
+      cloud.impDono = cloud.equipe ? cloud.equipe.id : user.uid;
       assinar(cloud.equipe
         ? F.doc(fb.db, 'equipes', cloud.equipe.id, 'dados', 'principal')
         : F.doc(fb.db, 'users', user.uid, 'dados', 'principal'));
+      assinarImp(cloud.impDono);
+      cloud.carregando = false;
       emit();
     });
   } catch (e) {
@@ -130,7 +216,13 @@ export async function initCloud() {
 }
 
 export const login = () => fb.A.signInWithPopup(fb.auth, new fb.A.GoogleAuthProvider());
-export const logout = () => fb.A.signOut(fb.auth);
+export const logout = () => {
+  if (souFuncionario()) { // não deixa dados no navegador de quem saiu
+    for (const k of [LS, LS_ORIGEM, 'gestao360:imp-dono']) try { localStorage.removeItem(k); } catch {}
+    state = seed(); impJson = jsonImp();
+  }
+  return fb.A.signOut(fb.auth);
+};
 
 // Dono define quem enxerga e edita os dados. Na primeira vez, os dados atuais viram os da equipe.
 export async function salvarEquipe(emails) {

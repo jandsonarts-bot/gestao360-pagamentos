@@ -519,3 +519,52 @@ tr.clicavel:hover td { background: var(--surface2); }
   .imp-scroll { overflow: visible; }
   * { animation: none !important; }
 }
+/* ---------- Conferência ---------- */
+.cf-topo { display: grid; grid-template-columns: 1.3fr 1fr; gap: 22px; align-items: center; }
+.cf-total span { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700; color: var(--muted); display: block; }
+.cf-total b { display: block; font-size: 38px; font-weight: 800; letter-spacing: -.03em; margin: 2px 0; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; font-variant-numeric: tabular-nums; }
+.cf-total small { color: var(--muted); font-size: 12.5px; }
+.cf-btns { display: flex; gap: 8px; margin-top: 12px; }
+.cf-sub { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.cf-setor h3.imp-h { display: flex; align-items: center; gap: 8px; }
+.cf-row { display: grid; grid-template-columns: 38px minmax(150px, 1.5fr) 92px 16px 108px minmax(110px, 1fr) 96px 44px; align-items: center; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--line); transition: background .15s; }
+.cf-row.feito { background: color-mix(in srgb, var(--ok) 8%, transparent); }
+.cf-row.alerta { background: var(--bad-soft); }
+.cf-id b { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; background: var(--surface2); font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cf-nome strong { display: block; font-size: 14px; word-break: break-all; }
+.cf-nome span { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.cf-cont span, .cf-pag span { display: block; font-size: 11px; color: var(--muted); font-weight: 600; }
+.cf-cont b, .cf-edit { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cf-edit { color: var(--accent); padding: 0; border-bottom: 1px dashed currentColor; }
+.cf-seta { color: var(--muted); text-align: center; }
+.cf-pag b { font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.cf-val { text-align: right; } .cf-val b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.cf-ok { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; color: transparent; transition: .15s; }
+.cf-ok:hover:not(:disabled) { border-color: var(--ok); color: var(--ok); }
+.cf-ok[aria-pressed=true] { background: var(--ok); border-color: var(--ok); color: #fff; box-shadow: 0 6px 16px color-mix(in srgb, var(--ok) 40%, transparent); }
+.cf-ok:disabled { opacity: .35; cursor: not-allowed; }
+.cf-alerta { grid-column: 1 / -1; font-size: 12.5px; color: var(--bad); font-weight: 600; }
+.cf-nfl { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; } .cf-nfl .f { flex: 1; min-width: 200px; margin: 0; }
+.cf-bate { margin-top: 12px; padding: 10px 14px; border-radius: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.cf-bate.ok { background: var(--ok-soft); color: var(--ok); } .cf-bate.dif { background: var(--warn-soft); color: var(--warn); }
+@media (max-width: 900px) {
+  .cf-topo { grid-template-columns: 1fr; }
+  .cf-row { grid-template-columns: 34px 1fr 1fr auto 44px; grid-template-areas: "id nome nome val ok" "id ant atu pag ok"; row-gap: 8px; }
+  .cf-id { grid-area: id; } .cf-nome { grid-area: nome; } .cf-val { grid-area: val; } .cf-ok { grid-area: ok; }
+  .cf-ant { grid-area: ant; } .cf-atu { grid-area: atu; } .cf-pag { grid-area: pag; text-align: right; }
+  .cf-seta { display: none; }
+}
+
+/* ---------- gráfico dos últimos 3 meses (Painel) ---------- */
+.g3-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.g3-topo h3 { margin: 0 !important; }
+.grafico3 .gbar { cursor: pointer; outline: none; }
+.grafico3 .g-fundo { fill: transparent; transition: fill .15s; }
+.grafico3 .gbar:hover .g-fundo, .grafico3 .gbar:focus-visible .g-fundo { fill: color-mix(in srgb, var(--c1) 10%, transparent); }
+.grafico3 .gbar rect[fill] { transition: opacity .15s; }
+.grafico3 .gbar:not(.sel) rect[fill] { opacity: .72; } .grafico3 .gbar:hover rect[fill] { opacity: 1; }
+.grafico .g-val { fill: var(--text); font-size: 12.5px; font-weight: 700; font-family: inherit; }
+.grafico .g-atual { fill: var(--accent); font-weight: 700; }
+.g-tip { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; padding: 10px 14px; margin-top: 12px; border-radius: 12px; background: var(--surface2); font-size: 13px; }
+.g-tip strong { margin-right: 6px; }
+.g-tip span { display: inline-flex; gap: 6px; align-items: baseline; } .g-tip em { font-style: normal; color: var(--muted); } .g-tip b { font-variant-numeric: tabular-nums; }

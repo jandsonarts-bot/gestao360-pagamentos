@@ -9,6 +9,29 @@ service cloud.firestore {
       allow read, write: if logado() && request.auth.uid == uid;
     }
 
+    // Impressoras: o dono libera funcionários que enxergam e lançam SÓ os dados das impressoras.
+    // Funcionário não consegue ler nada de /users nem de /equipes/.../dados.
+    match /impressoras/{dono} {
+      allow get: if logado() && (request.auth.uid == dono
+        || (request.auth.token.email_verified && exists(/databases/$(database)/documents/equipes/$(dono))
+            && email() in get(/databases/$(database)/documents/equipes/$(dono)).data.membros));
+      // lista: usada pelo funcionário para descobrir de quem é o acesso dele
+      allow list: if logado() && request.auth.token.email_verified && email() in resource.data.funcionarios;
+      allow create, update: if logado() && request.auth.uid == dono
+                            && request.resource.data.dono == dono
+                            && request.resource.data.funcionarios is list
+                            && request.resource.data.funcionarios.size() <= 20;
+      allow delete: if logado() && request.auth.uid == dono;
+
+      match /dados/{doc} {
+        allow read, write: if logado() && (request.auth.uid == dono
+          || (request.auth.token.email_verified && exists(/databases/$(database)/documents/impressoras/$(dono))
+              && email() in get(/databases/$(database)/documents/impressoras/$(dono)).data.funcionarios)
+          || (request.auth.token.email_verified && exists(/databases/$(database)/documents/equipes/$(dono))
+              && email() in get(/databases/$(database)/documents/equipes/$(dono)).data.membros));
+      }
+    }
+
     // Equipe: o dono (id do documento = uid dele) define os e-mails com acesso.
     match /equipes/{dono} {
       allow read: if logado() && request.auth.token.email_verified && email() in resource.data.membros;

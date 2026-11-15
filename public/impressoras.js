@@ -1,6 +1,6 @@
 // Aba "Impressoras": controle das impressoras locadas (COPYGRAF) e do valor a pagar por mês.
 // As contas ficam em imp-calc.js; aqui estão as telas, os diálogos e as ações.
-import { state, save, cloud, uid, delAnexo } from './store.js';
+import { state, save, cloud, uid, delAnexo, souFuncionario, lerFuncionarios, salvarFuncionarios } from './store.js';
 import * as C from './imp-calc.js';
 import { criarXlsx, lerXlsx, lerCsv, serialParaIso, E } from './xlsx.js';
 
@@ -8,7 +8,11 @@ let h; // utilidades do app.js (esc, ic, abrir, fechar, cab, campo, toast, rende
 export function initImp(util) { h = util; }
 
 const D = () => state.imp;
-const U = () => (h.ui.imp ??= { sub: 'resumo', setor: '', lanc: null, rel: null });
+const btnAviso = a => a.tipo === 'conferir'
+  ? `<button class="btn sm primary" data-act="impIrConferir" data-mes="${a.mes}">Conferir</button>`
+  : `<button class="btn sm primary" data-act="impIrLancar" data-data="${a.data || ''}" data-mes="${a.mes || ''}">Lançar</button>`;
+const botaoZap = () => `<button class="btn sm zapc" data-act="impZap" title="Abre o WhatsApp com o aviso pronto">${h.ic('zap')}Avisar no WhatsApp</button>`;
+const U = () => (h.ui.imp ??= { sub: 'conferir', setor: '', lanc: null, rel: null });
 const eu = () => cloud.user?.email || 'neste aparelho';
 // Administrador = dono dos dados (quem compartilhou) ou quem usa sozinho.
 const souAdmin = () => !cloud.user || !cloud.equipe || cloud.equipe.id === cloud.user.uid;
@@ -148,12 +152,57 @@ function vMes() {
   const logs = d.log.filter(x => x.l.mes === mes).slice(-12).reverse();
   return `<div class="tools"><span class="badge ${r.status === 'FECHADO' ? 'pago' : 'pendente'}">${r.status === 'FECHADO' ? 'Mês fechado' : 'Mês aberto'}</span>
       <span class="grow muted">${r.parcial ? `${r.pendentes} impressora${r.pendentes > 1 ? 's' : ''} sem fechamento: total parcial pela última leitura.` : 'Todas as impressoras com total definido.'}</span>
-      <button class="btn" data-act="impSub" data-s="cobranca">Ver cobrança</button>
+      ${souFuncionario() ? '' : `<button class="btn" data-act="impSub" data-s="cobranca">Ver cobrança</button>`}
       ${r.status === 'FECHADO' ? '' : `<button class="btn primary" data-act="impIrLancar">${h.ic('mais')}Lançar leituras</button>`}</div>
     ${agrupar(r.linhas, l => l.setorId).map(grade).join('')}
     ${r.soltos.length ? `<div class="card"><h3>Páginas sem impressora identificada</h3>${r.soltos.map(t => `<p class="nota">${tagTipo(t.tipo)} <b>${int(t.pag)}</b> páginas — ${h.esc(t.obs || '')}</p>`).join('')}</div>` : ''}
     ${logs.length ? `<div class="card"><h3>Alterações registradas</h3>${logs.map(x => `<p class="nota">${quando(x.q)} · <b>${h.esc(x.por)}</b> ${x.acao === 'CRIOU' ? 'lançou' : x.acao === 'ALTEROU' ? 'alterou' : 'excluiu'}
       ${h.esc(nomeImp(x.l.imp))} · ${C.TIPO_CURTO[x.l.tipo]} ${h.fmtData(x.l.data)} · ${x.antes && x.antes.cont !== x.l.cont ? `${int(x.antes.cont)} → ` : ''}${int(x.l.cont)}</p>`).join('')}</div>` : ''}`;
+}
+
+
+// ---------- conferência (tela simples para bater número por número) ----------
+function vConferir() {
+  const d = D(), mes = h.ui.mes, r = C.resumoMes(d, mes), info = r.info, conf = info.conf || {};
+  if (!r.temDado) return `<div class="card">${h.vazio(`Sem leituras em ${h.nomeMes(mes)}`, 'Lance as leituras para poder conferir.')}</div>`;
+  const nums = new Map(); let n = 0;
+  for (const p of C.ordenadas(d)) if (p.status === 'ATIVA') nums.set(p.id, ++n);
+  const ok = l => !!conf[l.p.id] && conf[l.p.id].pag === l.pag && l.pag != null;
+  const feitas = r.linhas.filter(ok).length, tot = r.linhas.length, pct = tot ? Math.round(feitas / tot * 100) : 0;
+  const nf = info.valorNf ? C.dec4(info.valorNf) : null, dif = nf != null ? C.centavos(nf) - r.total : null;
+  const chip = l => l.sit === 'FECHADO' ? '<span class="badge pago">Fechamento</span>' : l.sit === 'PARCIAL' ? '<span class="badge proximo">Parcial</span>'
+    : l.sit === 'IMPORTADO' ? '<span class="badge">Da planilha</span>' : l.sit === 'SEM_BASE' ? '<span class="badge proximo">Sem leitura inicial</span>' : '<span class="badge atrasado">Sem leitura</span>';
+  const linha = l => {
+    const ref = l.fechamento || l.ultima, c = ok(l);
+    return `<div class="cf-row ${c ? 'feito' : ''} ${l.alerta ? 'alerta' : ''}">
+      <div class="cf-id"><b>${nums.get(l.p.id) ? String(nums.get(l.p.id)).padStart(2, '0') : '—'}</b></div>
+      <div class="cf-nome"><strong>${h.esc(C.rotulo(l.p))}</strong><span>${h.esc(l.p.modelo || '')} ${tagTipo(l.p.tipo)} ${l.p.status !== 'ATIVA' ? `<span class="badge proximo">${l.p.status === 'SUBSTITUIDA' ? 'substituída' : 'desativada'}</span>` : ''}</span></div>
+      <div class="cf-ant cf-cont"><span>Anterior</span><b>${l.base ? int(l.base.cont) : '—'}</b></div>
+      <div class="cf-seta">→</div>
+      <div class="cf-atu cf-cont"><span>${l.fechamento ? 'Fechamento' : 'Última leitura'}</span>${ref
+        ? `<button class="cf-edit" data-act="impEditar" data-id="${ref.id}" title="Corrigir esta leitura">${int(ref.cont)}</button>`
+        : l.sit === 'IMPORTADO' ? '<b>—</b>' : `<button class="cf-edit" data-act="impIrLancar" data-mes="${mes}">lançar</button>`}</div>
+      <div class="cf-pag"><b>${l.pag == null ? '—' : int(l.pag)}</b><span>páginas ${chip(l)}</span></div>
+      <div class="cf-val"><b>${brl(l.valor)}</b></div>
+      <button class="cf-ok" data-act="impConf" data-id="${l.p.id}" ${l.pag == null ? 'disabled' : ''} aria-pressed="${c}" title="${c ? 'Conferido — toque para desmarcar' : 'Marcar como conferido'}">${h.ic('check')}</button>
+      ${l.alerta ? `<p class="cf-alerta">${h.esc(l.alerta)}</p>` : ''}
+    </div>`;
+  };
+  return `<div class="cf-topo card">
+      <div class="cf-total"><span>Total a pagar · ${h.nomeMes(mes)}${r.parcial ? ' · parcial' : ''}</span><b>${brl(r.total)}</b>
+        <small>${int(r.pagCor)} coloridas × ${r.preco ? precoTxt(r.preco.cor) : '—'} + ${int(r.pagPb)} P&amp;B × ${r.preco ? precoTxt(r.preco.pb) : '—'}${r.desconto ? ` − desconto ${brl(r.desconto)}` : ''}</small></div>
+      <div class="cf-prog"><div class="prog-h"><span>Conferidas</span><b>${feitas} de ${tot}</b></div><div class="bar"><i style="width:${pct}%"></i></div>
+        <div class="cf-btns no-print"><button class="btn sm" data-act="impConfTodas">${h.ic('check')}Marcar todas</button><button class="btn sm ghost" data-act="impConfLimpar">Limpar</button></div></div>
+    </div>
+    ${agrupar(r.linhas, l => l.setorId).map(([sid, ls]) => `<div class="card flush cf-setor"><h3 class="imp-h">${h.esc(C.nomeSetor(d, sid))}${ls[0].p.resp ? ` <em>${h.esc(ls[0].p.resp)}</em>` : ''}
+        <span class="cf-sub">${int(ls.reduce((s, l) => s + (l.pag || 0), 0))} pág. · ${brl(ls.reduce((s, l) => s + (l.valor || 0), 0))}</span></h3>${ls.map(linha).join('')}</div>`).join('')}
+    ${r.soltos.length ? `<div class="card"><h3>Páginas sem impressora identificada</h3>${r.soltos.map(t => `<p class="nota">${tagTipo(t.tipo)} <b>${int(t.pag)}</b> páginas · ${brl(t.valor)} — ${h.esc(t.obs || '')}</p>`).join('')}</div>` : ''}
+    <form class="card cf-nf no-print" data-form="impConfNf"><h3>Bater com a nota fiscal</h3>
+      <div class="cf-nfl">${h.campo('Valor da NF da COPYGRAF (R$)', `<input name="valorNf" inputmode="decimal" value="${h.esc(info.valorNf ? info.valorNf.replace('.', ',') : '')}" placeholder="0,00">`)}
+        <button class="btn" type="submit">Comparar</button></div>
+      ${dif == null ? '<p class="nota">Digite o valor da NF para ver se bate com o cálculo.</p>'
+        : dif === 0 ? `<p class="cf-bate ok">${h.ic('check')} A NF bate com o cálculo: ${brl(r.total)}.</p>`
+        : `<p class="cf-bate dif">NF ${brl(C.centavos(nf))} · cálculo ${brl(r.total)} · diferença de <b>${brl(Math.abs(dif))}</b> ${dif > 0 ? 'a mais na NF' : 'a menos na NF'}.</p>`}</form>`;
 }
 
 // ---------- cobrança do mês ----------
@@ -306,11 +355,11 @@ function vResumo() {
       <button class="kpi ok" data-act="impSub" data-s="cobranca"><span>${r.parcial ? 'Valor parcial' : 'Valor'} de ${h.nomeMes(mes).split(' ')[0]}</span><b>${brl(r.total)}</b><small>${r.status === 'FECHADO' ? 'mês fechado' : r.parcial ? 'pela última leitura' : 'com todos os fechamentos'}</small></button>
       <button class="kpi" data-act="impSub" data-s="mes"><span>Coloridas</span><b>${int(r.pagCor)}</b><small>${brl(r.valorCor)}</small></button>
       <button class="kpi" data-act="impSub" data-s="mes"><span>Preto e branco</span><b>${int(r.pagPb)}</b><small>${brl(r.valorPb)}</small></button>
-      <button class="kpi ${av.length ? 'bad' : ''}" data-act="impIrLancar"><span>Leituras da semana</span><b>${av.filter(a => a.tipo !== 'fechamento').length ? 'Pendente' : 'Em dia'}</b><small>${C.ativas(d).length} impressoras ativas</small></button>
+      <button class="kpi ${av.length ? 'bad' : ''}" data-act="impIrLancar"><span>Leituras da semana</span><b>${av.filter(a => a.tipo === 'hoje' || a.tipo === 'falta').length ? 'Pendente' : 'Em dia'}</b><small>${C.ativas(d).length} impressoras ativas</small></button>
     </div>
     <div class="cols">
-      <div class="card"><h3>Avisos <em class="${av.length ? 'warn' : ''}">${av.length}</em></h3>
-        ${av.length ? av.map(a => `<div class="imp-aviso ${a.tipo}"><span>${h.esc(a.txt)}</span><button class="btn sm primary" data-act="impIrLancar" data-data="${a.data || ''}" data-mes="${a.mes || ''}">Lançar</button></div>`).join('')
+      <div class="card"><h3>Avisos <em class="${av.length ? 'warn' : ''}">${av.length}</em><span class="grow"></span>${av.length ? botaoZap() : ''}</h3>
+        ${av.length ? av.map(a => `<div class="imp-aviso ${a.tipo}"><span>${h.esc(a.txt)}</span>${btnAviso(a)}</div>`).join('')
           : h.vazio('Leituras em dia', 'Nenhuma leitura de segunda ou sexta pendente nesta semana.')}
         <h4 class="sec">Próximos dias de registro</h4>
         <div class="pills">${prox.map(dia => `<button class="pill ${dia === hoje ? 'on' : ''}" data-act="impIrLancar" data-data="${dia}">${C.DIAS[C.dataDe(dia).getDay()].slice(0, 3)} ${h.fmtData(dia).slice(0, 5)}</button>`).join('')}</div>
@@ -349,9 +398,15 @@ function vCadastro() {
         <div class="card"><h3>Dias de registro do consumo</h3>
           <div class="pills">${[1, 2, 3, 4, 5, 6].map(n => `<button class="pill ${d.dias.includes(n) ? 'on' : ''}" data-act="impDia" data-d="${n}">${C.DIAS[n].slice(0, 3)}</button>`).join('')}</div>
           <p class="nota" style="margin-top:10px">Nesses dias a Agenda e o Painel avisam que é dia de leitura.</p>
+          <label class="imp-filtro" style="margin-top:12px">Conferir o mês anterior no dia ${sel('diaConf', Array.from({ length: 28 }, (_, i) => [i + 1, i + 1]), d.diaConf, 'data-change="impDiaConf"')}</label>
+          <p class="nota" style="margin-top:6px">Esse dia entra na Agenda e no aviso de WhatsApp até o mês ser conferido ou fechado.</p>
+          <p class="nota" style="margin-top:6px">${state.config.zapMeu ? `Aviso pelo WhatsApp vai para <b>${h.esc(state.config.zapMeu)}</b>.` : 'Para receber o aviso no WhatsApp, cadastre "Meu WhatsApp" no sino de alertas (aba Painel).'}</p>
           <button class="btn block" data-act="impIcs">${h.ic('agenda')}Lembrete para a agenda do celular (.ics)</button></div>
       </div>
     </div>
+    ${cloud.user && !souFuncionario() && (!cloud.equipe || cloud.equipe.id === cloud.user.uid) ? `<div class="card"><h3>Acesso de funcionários</h3>
+      <p class="nota">Libere uma conta Google para ver <b>somente a aba Impressoras</b> e lançar as leituras. A pessoa não enxerga pagamentos, pedidos, documentos nem valores a pagar.</p>
+      <button class="btn block" data-act="impFunc">${h.ic('prestadores')}Gerenciar funcionários</button></div>` : ''}
     <div class="card"><h3>Importar planilha</h3>
       <p class="nota">Aceita o arquivo de histórico do sistema (.json) ou uma planilha de leituras (.xlsx ou .csv) com as colunas
         <b>Série, Mês de referência, Data, Tipo, Contador</b>. A importação só acrescenta: nada é apagado e leituras repetidas são ignoradas.</p>
@@ -393,19 +448,25 @@ function ics() {
   const txt = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Gestao 360//Impressoras//PT-BR', 'BEGIN:VEVENT', `UID:leitura-impressoras-${uid()}@gestao360`, `DTSTAMP:${carimbo}`,
     `DTSTART:${dia.replace(/-/g, '')}T080000`, 'DURATION:PT30M', `RRULE:FREQ=WEEKLY;BYDAY=${dias.map(n => cod[n]).join(',')}`,
     'SUMMARY:Registrar consumo das impressoras (COPYGRAF)', 'DESCRIPTION:Anotar o contador de cada impressora no Gestão 360 · Pagamentos · aba Impressoras.',
-    'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Dia de registrar o consumo das impressoras', 'TRIGGER:PT0M', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Dia de registrar o consumo das impressoras', 'TRIGGER:PT0M', 'END:VALARM', 'END:VEVENT',
+    'BEGIN:VEVENT', `UID:conferencia-impressoras-${uid()}@gestao360`, `DTSTAMP:${carimbo}`, `DTSTART:${h.hoje().slice(0, 8).replace(/-/g, '')}${String(d.diaConf).padStart(2, '0')}T090000`, 'DURATION:PT30M',
+    `RRULE:FREQ=MONTHLY;BYMONTHDAY=${d.diaConf}`, 'SUMMARY:Conferir as impressoras do mês (COPYGRAF)', 'DESCRIPTION:Conferir o fechamento do mês anterior e a NF no Gestão 360 · Pagamentos · aba Impressoras.',
+    'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Dia de conferir as impressoras', 'TRIGGER:PT0M', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
   baixarBlob(new Blob([txt], { type: 'text/calendar' }), 'leitura-impressoras.ics');
 }
 
 // ---------- tela principal ----------
-const SUBS = { resumo: ['Resumo', vResumo], lancar: ['Lançar leituras', vLancar], mes: ['Mês', vMes], cobranca: ['Cobrança', vCobranca], historico: ['Histórico', vHist], cadastro: ['Cadastro', vCadastro] };
+const SUBS = { conferir: ['Conferir', vConferir], resumo: ['Resumo', vResumo], lancar: ['Lançar leituras', vLancar], mes: ['Mês', vMes], cobranca: ['Cobrança', vCobranca], historico: ['Histórico', vHist], cadastro: ['Cadastro', vCadastro] };
+const SUBS_FUNC = ['lancar', 'mes'];   // funcionário: lança leituras e confere a grade do mês (sem valores em R$)
 export function vImpressoras() {
-  const d = D(), u = U();
+  const d = D(), u = U(), func = souFuncionario();
+  if (func && !SUBS_FUNC.includes(u.sub)) u.sub = 'lancar';
   if (!d.impressoras.length && u.sub !== 'cadastro') {
+    if (func) return `<div class="card">${h.vazio('Nenhuma impressora cadastrada ainda', 'Peça ao responsável para cadastrar as impressoras. Assim que existirem, elas aparecem aqui.')}</div>`;
     return `<div class="card">${h.vazio('Controle de impressoras locadas', 'Cadastre as impressoras ou importe o histórico para começar.')}
       <div class="tools" style="justify-content:center;margin:0"><button class="btn primary" data-act="impSub" data-s="cadastro">Abrir cadastro e importação</button></div></div>`;
   }
-  return `<div class="tools no-print imp-subs"><div class="pills">${Object.entries(SUBS).map(([k, [t]]) => `<button class="pill ${u.sub === k ? 'on' : ''}" data-act="impSub" data-s="${k}">${t}</button>`).join('')}</div></div>
+  return `<div class="tools no-print imp-subs"><div class="pills">${Object.entries(SUBS).filter(([k]) => !func || SUBS_FUNC.includes(k)).map(([k, [t]]) => `<button class="pill ${u.sub === k ? 'on' : ''}" data-act="impSub" data-s="${k}">${t}</button>`).join('')}</div></div>
     ${SUBS[u.sub][1]()}`;
 }
 
@@ -428,6 +489,20 @@ function dImp(p) {
         ${h.campo('Substituída por', sel('substPor', [['', '—'], ...d.impressoras.filter(x => x.id !== p.id).map(x => [x.id, C.rotulo(x)])], p.substPor))}</div>
       ${h.campo('Observações', `<input name="obs" value="${h.esc(p.obs)}">`)}
     </div><footer><span class="grow"></span><button type="button" class="btn ghost" data-act="fechar">Cancelar</button><button class="btn primary" type="submit">Salvar</button></footer></form>`);
+}
+
+
+function dFunc(lista) {
+  h.abrir(`${h.cab('Acesso de funcionários', 'Cada pessoa entra com a própria conta Google e vê só a aba Impressoras.')}
+    <form data-form="impFunc"><div class="body">
+      <h4>Pessoas com acesso</h4>
+      <div class="files">${lista.map(m => `<div class="file"><span class="mail">${h.esc(m)}</span>
+        <button type="button" class="xbtn sm" data-act="impTirarFunc" data-m="${h.esc(m)}" aria-label="Remover ${h.esc(m)}">${h.ic('x')}</button>
+        <input type="hidden" name="m" value="${h.esc(m)}"></div>`).join('') || '<p class="muted">Nenhum funcionário liberado.</p>'}</div>
+      ${h.campo('Adicionar funcionário (e-mail da conta Google)', '<input name="novo" type="email" placeholder="nome@gmail.com" autocomplete="off">')}
+      <p class="nota">O funcionário abre o app, toca em Entrar com Google e já cai só na aba Impressoras: pode lançar leituras e ver a grade do mês.
+        Para tirar o acesso, remova o e-mail e salve. As telas dele escondem Cobrança, valores e Cadastro; o banco de dados bloqueia o acesso ao resto do sistema.</p>
+    </div><footer><button type="button" class="btn ghost" data-act="fechar">Fechar</button><span class="grow"></span><button class="btn primary" type="submit">Salvar</button></footer></form>`);
 }
 
 function dLeitura(l) {
@@ -455,9 +530,34 @@ const irLancar = (data, mes) => {
 const anexoDoMes = aid => (D().meses[h.ui.mes]?.anexos || []).find(a => a.id === aid);
 
 export const impActs = {
-  impSub: el => { U().sub = el.dataset.s; h.ui.anim = true; h.render(); window.scrollTo(0, 0); },
+  impSub: el => { if (souFuncionario() && !SUBS_FUNC.includes(el.dataset.s)) return; U().sub = el.dataset.s; h.ui.anim = true; h.render(); window.scrollTo(0, 0); },
   impIrLancar: el => irLancar(el.dataset.data, el.dataset.mes),
+  impIrConferir: el => { if (C.mesValido(el.dataset.mes)) h.ui.mes = el.dataset.mes; U().sub = 'conferir'; h.ui.view = 'impressoras'; h.ui.anim = true; h.render(); window.scrollTo(0, 0); },
+  impZap: () => {
+    const av = C.avisos(D(), h.hoje());
+    if (!av.length) return h.toast('Nada pendente nas impressoras agora.');
+    const txt = `*Gestão 360 · Impressoras*\n${av.map(a => '• ' + a.txt).join('\n')}\n\nhttps://jandsonarts-bot.github.io/gestao360-pagamentos/`;
+    window.open(h.zapUrl(state.config.zapMeu, txt), '_blank', 'noopener');
+  },
   impAbrirMes: el => { h.ui.mes = el.dataset.mes; U().sub = 'cobranca'; h.ui.anim = true; h.render(); window.scrollTo(0, 0); },
+  impConf: el => {
+    const mes = h.ui.mes, l = C.resumoMes(D(), mes).linhas.find(x => x.p.id === el.dataset.id);
+    if (!l || l.pag == null) return;
+    const m = garantirMes(mes), conf = (m.conf ??= {});
+    if (conf[l.p.id] && conf[l.p.id].pag === l.pag) delete conf[l.p.id]; else conf[l.p.id] = { pag: l.pag, por: eu(), em: new Date().toISOString() };
+    save();
+  },
+  impConfTodas: () => {
+    const mes = h.ui.mes, m = garantirMes(mes), conf = (m.conf ??= {}), agora = new Date().toISOString();
+    for (const l of C.resumoMes(D(), mes).linhas) if (l.pag != null && l.pag >= 0) conf[l.p.id] = { pag: l.pag, por: eu(), em: agora };
+    save(); h.toast('Todas marcadas como conferidas');
+  },
+  impConfLimpar: () => { const m = garantirMes(h.ui.mes); m.conf = {}; save(); },
+  impFunc: async () => {
+    try { dFunc(await lerFuncionarios()); }
+    catch (e) { h.toast('Não foi possível abrir: ' + e.message); }
+  },
+  impTirarFunc: el => dFunc([...document.querySelectorAll('#dlg input[name=m]')].map(i => i.value).filter(m => m !== el.dataset.m)),
   impSalvarLote: salvarLote,
   impLimparLote: () => { lanc().vals = {}; h.render(); },
   impEditar: el => { const l = D().leituras.find(x => x.id === el.dataset.id); if (l) dLeitura(l); },
@@ -564,6 +664,18 @@ export const impForms = {
     C.registrar(d, 'ALTEROU', l, eu(), antes);
     save(); h.fechar(); h.toast('Leitura alterada');
   },
+  impConfNf(v) {
+    const nf = v.valorNf.trim() ? C.dec4(v.valorNf) : 0;
+    if (nf == null) throw new Error('valor inválido.');
+    garantirMes(h.ui.mes).valorNf = nf ? C.txt4(nf) : '';
+    save();
+  },
+  async impFunc(v, f) {
+    const lista = [...f.querySelectorAll('input[name=m]')].map(i => i.value);
+    if (v.novo?.trim()) lista.push(v.novo);
+    const salvo = await salvarFuncionarios(lista);
+    h.toast(`Acesso salvo: ${salvo.length} funcionário${salvo.length === 1 ? '' : 's'}`); dFunc(salvo);
+  },
   impDesc(v) {
     const mes = h.ui.mes, valor = C.dec4(v.desconto.trim() || '0');
     if (valor == null) throw new Error('desconto inválido.');
@@ -588,6 +700,7 @@ export const impChanges = {
     h.render();
   },
   impSetorHist: t => { U().setor = t.value; h.render(); },
+  impDiaConf: t => { const n = +t.value; if (n >= 1 && n <= 28) { D().diaConf = n; save(); } },
   impAnexar: async t => {
     if (!t.files.length) return;
     t.closest('.drop').classList.add('busy');
@@ -624,29 +737,40 @@ export const impInputs = {
 
 // ---------- ganchos para a Agenda, o Painel e os lembretes ----------
 export function agendaDia(data) {
-  const d = D();
-  if (!C.ativas(d).length) return null;
-  const s = C.situacaoDia(d, data), hoje = h.hoje();
-  if (!s.diaDeLeitura && !s.feitas) return null;
-  if (!s.feitas && data < C.somaDia(hoje, -14)) return null;   // dias antigos sem registro não poluem a agenda
-  const st = s.feitas >= s.total ? 'pago' : data < hoje ? (s.feitas ? 'proximo' : 'atrasado') : data === hoje ? 'hoje' : 'pendente';
-  return { st, feitas: s.feitas, total: s.total };
+  const d = D(), hoje = h.hoje(), itens = [];
+  let feitas = 0, total = 0;
+  if (C.ativas(d).length) {
+    const s = C.situacaoDia(d, data);
+    if ((s.diaDeLeitura || s.feitas) && (s.feitas || data >= C.somaDia(hoje, -14))) {
+      const st = s.feitas >= s.total ? 'pago' : data < hoje ? (s.feitas ? 'proximo' : 'atrasado') : data === hoje ? 'hoje' : 'pendente';
+      itens.push({ tipo: 'leitura', st, rotulo: 'Leitura impressoras' }); feitas = s.feitas; total = s.total;
+    }
+  }
+  if (Number(data.slice(8)) === d.diaConf) {   // dia de conferir o mês anterior
+    const cf = C.conferenciaDoMes(d, data.slice(0, 7));
+    if (cf) itens.push({ tipo: 'conferir', st: cf.pronta ? 'pago' : data < hoje ? 'atrasado' : data === hoje ? 'hoje' : 'pendente', rotulo: 'Conferir impressoras', cf });
+  }
+  return itens.length ? { itens, feitas, total, st: itens[0].st } : null;
 }
 export function agendaPainel(data) {
   const a = agendaDia(data);
   if (!a) return '';
-  return `<div class="imp-aviso ${a.st === 'atrasado' ? 'falta' : a.st === 'hoje' ? 'hoje' : ''}"><span><b>Leitura das impressoras</b><br>${a.feitas} de ${a.total} lançadas${a.st === 'pendente' ? ' · dia de registro do consumo' : ''}</span>
-    <button class="btn sm ${a.st === 'pago' ? '' : 'primary'}" data-act="impIrLancar" data-data="${data}">${a.st === 'pago' ? 'Ver' : 'Lançar'}</button></div>`;
+  const cls = st => st === 'atrasado' ? 'falta' : st === 'hoje' ? 'hoje' : '';
+  return a.itens.map(i => i.tipo === 'leitura'
+    ? `<div class="imp-aviso ${cls(i.st)}"><span><b>Leitura das impressoras</b><br>${a.feitas} de ${a.total} lançadas${i.st === 'pendente' ? ' · dia de registro do consumo' : ''}</span>
+      <button class="btn sm ${i.st === 'pago' ? '' : 'primary'}" data-act="impIrLancar" data-data="${data}">${i.st === 'pago' ? 'Ver' : 'Lançar'}</button></div>`
+    : `<div class="imp-aviso ${cls(i.st)}"><span><b>Conferir as impressoras de ${h.nomeMes(i.cf.mes)}</b><br>${i.cf.feitas} de ${i.cf.total} conferidas${i.cf.pronta ? ' · concluído' : ''}</span>
+      <button class="btn sm ${i.st === 'pago' ? '' : 'primary'}" data-act="impIrConferir" data-mes="${i.cf.mes}">${i.st === 'pago' ? 'Ver' : 'Conferir'}</button></div>`).join('');
 }
 export function avisoPainel() {
   const av = C.avisos(D(), h.hoje());
   if (!av.length) return '';
-  return `<div class="card imp-card-aviso"><h3>${h.ic('impressoras')}Impressoras <em class="warn">${av.length}</em></h3>
-    ${av.map(a => `<div class="imp-aviso ${a.tipo}"><span>${h.esc(a.txt)}</span><button class="btn sm primary" data-act="impIrLancar" data-data="${a.data || ''}" data-mes="${a.mes || ''}">Lançar</button></div>`).join('')}</div>`;
+  return `<div class="card imp-card-aviso"><h3>${h.ic('impressoras')}Impressoras <em class="warn">${av.length}</em><span class="grow"></span>${botaoZap()}</h3>
+    ${av.map(a => `<div class="imp-aviso ${a.tipo}"><span>${h.esc(a.txt)}</span>${btnAviso(a)}</div>`).join('')}</div>`;
 }
 export function notificarImp() {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  const av = C.avisos(D(), h.hoje()).filter(a => a.tipo === 'hoje');
+  const av = C.avisos(D(), h.hoje()).filter(a => a.tipo === 'hoje' || a.tipo === 'conferir');
   const k = 'gestao360:notif-imp';
   if (!av.length || localStorage.getItem(k) === h.hoje()) return;
   localStorage.setItem(k, h.hoje());

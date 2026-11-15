@@ -8,13 +8,14 @@ export const TIPO_CURTO = { SEG: 'Seg', SEX: 'Sex', FECHAMENTO: 'Fechamento' };
 export const DIAS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 export const FORMATO = 'gestao360-impressoras-v1';
 
-export const novo = () => ({ setores: [], impressoras: [], precos: [], leituras: [], meses: {}, totais: [], log: [], dias: [1, 5] });
+export const novo = () => ({ setores: [], impressoras: [], precos: [], leituras: [], meses: {}, totais: [], log: [], dias: [1, 5], diaConf: 5 });
 
 export function normalizar(imp) {
   const d = Object.assign(novo(), imp || {});
   for (const k of ['setores', 'impressoras', 'precos', 'leituras', 'totais', 'log']) if (!Array.isArray(d[k])) d[k] = [];
   if (!d.meses || typeof d.meses !== 'object') d.meses = {};
   if (!Array.isArray(d.dias)) d.dias = [1, 5];
+  if (!(d.diaConf >= 1 && d.diaConf <= 28)) d.diaConf = 5;
   return d;
 }
 
@@ -177,6 +178,20 @@ export function situacaoDia(imp, data) {
   return { total: at.length, feitas: at.filter(p => ids.has(p.id)).length, diaDeLeitura: imp.dias.includes(dataDe(data).getDay()) };
 }
 
+// Quantas impressoras do mês já foram marcadas como conferidas (a marca vale só se o total não mudou).
+export function confFeitas(imp, r) {
+  const c = r.info.conf || {};
+  return r.linhas.filter(l => l.pag != null && c[l.p.id] && c[l.p.id].pag === l.pag).length;
+}
+
+// Conferência do mês anterior: vale a partir do "dia da conferência" e some quando o mês é fechado ou todas estão conferidas.
+export function conferenciaDoMes(imp, mesAtual) {
+  const mes = somaMes(mesAtual, -1), r = resumoMes(imp, mes);
+  if (!r.temDado) return null;
+  const feitas = confFeitas(imp, r), total = r.linhas.length;
+  return { mes, feitas, total, pronta: r.status === 'FECHADO' || (total > 0 && feitas >= total) };
+}
+
 export function avisos(imp, hoje) {
   const out = [], at = ativas(imp);
   if (!at.length) return out;
@@ -195,8 +210,11 @@ export function avisos(imp, hoje) {
   const semFech = at.filter(p => baseAnterior(imp, p, ant) && !imp.leituras.some(l => l.imp === p.id && l.mes === ant && l.tipo === 'FECHAMENTO')
     && !imp.totais.some(t => t.imp === p.id && t.mes === ant)).length;
   if (semFech) out.push({ tipo: 'fechamento', mes: ant, txt: `Falta a leitura de fechamento do mês anterior para ${semFech} impressora${semFech > 1 ? 's' : ''}.` });
+  const cf = Number(hoje.slice(8)) >= imp.diaConf ? conferenciaDoMes(imp, hoje.slice(0, 7)) : null;
+  if (cf && !cf.pronta) out.push({ tipo: 'conferir', mes: cf.mes, txt: `Dia de conferir as impressoras de ${MESES_PT[+cf.mes.slice(5) - 1]}/${cf.mes.slice(0, 4)}: ${cf.feitas} de ${cf.total} conferidas.` });
   return out;
 }
+const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
 // ---------- gravação ----------
 export function registrar(imp, acao, leitura, por, antes) {
