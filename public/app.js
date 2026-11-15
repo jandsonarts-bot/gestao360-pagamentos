@@ -211,7 +211,7 @@ let gDados = [];
 function dadosMes(m) {
   const its = itensDoMes(m), soma = f => its.filter(f).reduce((s, i) => s + (+i.valor || 0), 0);
   const pago = soma(i => i.pago), total = soma(() => true);
-  const imp = IC.resumoMes(state.imp, m);
+  const imp = IC.resumoMes(state.imp, addMes(m, -1));   // folha do mês anterior, paga neste mês
   return { m, total, pago, aberto: total - pago, n: its.length, FIXO: soma(i => i.tipo === 'FIXO'), VARIAVEL: soma(i => i.tipo === 'VARIÁVEL'), PEDIDO: soma(i => i.tipo === 'PEDIDO'),
     imp: imp.temDado ? imp.total / 100 : 0, impPag: imp.pagCor + imp.pagPb, impParcial: imp.temDado && imp.parcial };
 }

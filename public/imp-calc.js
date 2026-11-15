@@ -15,9 +15,39 @@ export function normalizar(imp) {
   for (const k of ['setores', 'impressoras', 'precos', 'leituras', 'totais', 'log']) if (!Array.isArray(d[k])) d[k] = [];
   if (!d.meses || typeof d.meses !== 'object') d.meses = {};
   if (!Array.isArray(d.dias)) d.dias = [1, 5];
-  if (!(d.diaConf >= 1 && d.diaConf <= 28)) d.diaConf = 5;
+  if (!(d.diaConf >= 1 && d.diaConf <= 28)) d.diaConf = 6;
+  migrarFolha(d);
   return d;
 }
+
+// Regra da folha (v2): a folha fecha todo dia 05 e tem o nome do mês em que fecha; a leitura de fechamento
+// (lida dia 06) pertence a ela e o pagamento é no mês seguinte. Ex.: leitura de 06/11 = folha de Novembro, paga em dezembro.
+// Dados antigos (v1) usavam o nome do mês do consumo (a leitura de 06/11 era "Outubro"): andam um mês.
+const NOMES_MES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+export function migrarFolha(imp) {
+  if (imp.folhaV2) return false;
+  const m1 = ym => (ym ? somaMes(ym, 1) : ym);
+  const vazio = !imp.leituras.length && !imp.impressoras.length && !imp.precos.length && !imp.totais.length && !Object.keys(imp.meses).length;
+  if (!vazio) {
+    for (const l of imp.leituras) l.mes = m1(l.mes);
+    for (const t of imp.totais) t.mes = m1(t.mes);
+    for (const l of imp.log) if (l.l) l.l.mes = m1(l.l.mes);
+    for (const p of imp.precos) p.desde = m1(p.desde);
+    for (const p of imp.impressoras) if (p.iniMes) p.iniMes = m1(p.iniMes);
+    const novos = {};
+    for (const [mes, v] of Object.entries(imp.meses)) {
+      v.obs = `[aba ${NOMES_MES[+mes.slice(5) - 1]} da planilha] ${v.obs || ''}`.trim();
+      novos[m1(mes)] = v;
+    }
+    imp.meses = novos;
+    if (imp.diaConf === 5) imp.diaConf = 6;
+    imp.atualizado = Date.now();
+  }
+  imp.folhaV2 = true;
+  return !vazio;
+}
+// "Pagamento em": a folha de um mês é paga no mês seguinte.
+export const mesPagamento = mes => somaMes(mes, 1);
 
 // ---------- dinheiro ----------
 // "0,076" | "0.076" | "1.234,56" -> inteiro em R$ 0,0001. Devolve null se não for um valor válido.
@@ -48,11 +78,13 @@ export const dataValida = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '') && !isNaN(dat
 
 // Sugestão do tipo e do mês de referência a partir da data da leitura.
 export function sugerir(data) {
-  const d = dataDe(data), dia = d.getDay(), mes = data.slice(0, 7);
-  if (dia === 1) return { tipo: 'SEG', mes };
-  if (dia === 5) return { tipo: 'SEX', mes };
-  // outro dia da semana: tratamos como fechamento; nos primeiros dias do mês ele fecha o mês anterior
-  return { tipo: 'FECHAMENTO', mes: d.getDate() <= 10 ? somaMes(mes, -1) : mes };
+  const d = dataDe(data), dia = d.getDay(), mes = data.slice(0, 7), d6 = d.getDate() <= 6;
+  // até o dia 6 (fechamento e leitura da folha) vale a folha do próprio mês; depois, já conta para a folha que fecha no mês seguinte
+  const folha = d6 ? mes : somaMes(mes, 1);
+  if (d.getDate() === 6) return { tipo: 'FECHAMENTO', mes };   // dia 06: leitura de fechamento da folha que fechou dia 05
+  if (dia === 1) return { tipo: 'SEG', mes: folha };
+  if (dia === 5) return { tipo: 'SEX', mes: folha };
+  return { tipo: 'FECHAMENTO', mes: folha };
 }
 
 // ---------- consultas ----------
@@ -185,8 +217,8 @@ export function confFeitas(imp, r) {
 }
 
 // Conferência do mês anterior: vale a partir do "dia da conferência" e some quando o mês é fechado ou todas estão conferidas.
-export function conferenciaDoMes(imp, mesAtual) {
-  const mes = somaMes(mesAtual, -1), r = resumoMes(imp, mes);
+export function conferenciaDoMes(imp, mes) {
+  const r = resumoMes(imp, mes);
   if (!r.temDado) return null;
   const feitas = confFeitas(imp, r), total = r.linhas.length;
   return { mes, feitas, total, pronta: r.status === 'FECHADO' || (total > 0 && feitas >= total) };
@@ -206,12 +238,12 @@ export function avisos(imp, hoje) {
       ? { tipo: 'hoje', data: dia, txt: `Hoje (${nome}) é dia de registrar o consumo das impressoras: ${falta === s.total ? 'nenhuma leitura lançada ainda' : `faltam ${falta} de ${s.total}`}.` }
       : { tipo: 'falta', data: dia, txt: `Falta a leitura de ${nome} (${dia.slice(8)}/${dia.slice(5, 7)}): ${falta} de ${s.total} impressoras.` });
   }
-  const ant = somaMes(hoje.slice(0, 7), -1);
+  const ant = hoje.slice(0, 7);
   const semFech = at.filter(p => baseAnterior(imp, p, ant) && !imp.leituras.some(l => l.imp === p.id && l.mes === ant && l.tipo === 'FECHAMENTO')
     && !imp.totais.some(t => t.imp === p.id && t.mes === ant)).length;
-  if (semFech) out.push({ tipo: 'fechamento', mes: ant, txt: `Falta a leitura de fechamento do mês anterior para ${semFech} impressora${semFech > 1 ? 's' : ''}.` });
-  const cf = Number(hoje.slice(8)) >= imp.diaConf ? conferenciaDoMes(imp, hoje.slice(0, 7)) : null;
-  if (cf && !cf.pronta) out.push({ tipo: 'conferir', mes: cf.mes, txt: `Dia de conferir as impressoras de ${MESES_PT[+cf.mes.slice(5) - 1]}/${cf.mes.slice(0, 4)}: ${cf.feitas} de ${cf.total} conferidas.` });
+  if (semFech && Number(hoje.slice(8)) >= imp.diaConf) out.push({ tipo: 'fechamento', mes: ant, txt: `Falta a leitura de fechamento da folha de ${MESES_PT[+ant.slice(5) - 1]} (fecha dia 05) para ${semFech} impressora${semFech > 1 ? 's' : ''}.` });
+  const cf = Number(hoje.slice(8)) >= imp.diaConf ? conferenciaDoMes(imp, hoje.slice(0, 7)) : null;   // folha do mês que fechou dia 05
+  if (cf && !cf.pronta) out.push({ tipo: 'conferir', mes: cf.mes, txt: `Dia de conferir a folha de ${MESES_PT[+cf.mes.slice(5) - 1]}/${cf.mes.slice(0, 4)} (paga em ${MESES_PT[+mesPagamento(cf.mes).slice(5) - 1]}): ${cf.feitas} de ${cf.total} conferidas.` });
   return out;
 }
 const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -226,6 +258,15 @@ export function registrar(imp, acao, leitura, por, antes) {
 export function importar(imp, arq, por, novoId) {
   if (!arq || arq.formato !== FORMATO) throw new Error('Arquivo não é um histórico de impressoras do Gestão 360.');
   const r = { setores: 0, impressoras: 0, precos: 0, leituras: 0, totais: 0, meses: 0, ignoradas: [] };
+  if (!arq.folhaV2) {   // arquivo com a regra antiga: os meses andam um à frente (leitura de 06/11 = folha de novembro)
+    const m1 = ym => (ym ? somaMes(ym, 1) : ym);
+    arq = { ...arq, folhaV2: true,
+      impressoras: (arq.impressoras || []).map(p => ({ ...p, iniMes: m1(p.iniMes) })),
+      precos: (arq.precos || []).map(p => ({ ...p, desde: m1(p.desde) })),
+      leituras: (arq.leituras || []).map(l => ({ ...l, mes: m1(l.mes) })),
+      totais: (arq.totais || []).map(t => ({ ...t, mes: m1(t.mes) })),
+      meses: (arq.meses || []).map(m => ({ ...m, mes: m1(m.mes), obs: `[aba ${NOMES_MES[+m.mes.slice(5) - 1]} da planilha] ${m.obs || ''}`.trim() })) };
+  }
   const setorId = nome => {
     if (!nome) return null;
     let s = imp.setores.find(x => x.nome.toLowerCase() === nome.toLowerCase());

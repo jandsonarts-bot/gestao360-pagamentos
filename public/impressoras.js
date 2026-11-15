@@ -60,7 +60,15 @@ function vLancar() {
   const d = D(), L = lanc(), trava = C.mesFechado(d, L.mes);
   const grupos = agrupar(C.ordenadas(d).filter(p => p.status === 'ATIVA'), p => p.setorId);
   const jaFech = L.tipo === 'FECHAMENTO' && grupos.some(([, ps]) => ps.some(p => noLugar(p.id, L)));
-  return `<div class="card">
+  const mesFolha = h.hoje().slice(0, 7), fechou = L.tipo === 'FECHAMENTO' && L.mes === mesFolha;
+  return `<div class="card lc-atalhos"><b>O que você vai lançar?</b>
+      <div class="pills">
+        <button class="pill ${!fechou && L.tipo !== 'FECHAMENTO' ? 'on' : ''}" data-act="impAtalhoHoje">Leitura de hoje (segunda ou sexta)</button>
+        <button class="pill ${fechou ? 'on' : ''}" data-act="impAtalhoFech" data-mes="${mesFolha}">Fechamento da folha de ${h.nomeMes(mesFolha)} (lido em ${h.fmtData(mesFolha + '-06').slice(0, 5)})</button>
+      </div>
+      <p class="nota">A folha fecha todo dia 05 e leva o nome do mês em que fecha. A leitura de fechamento é do dia 06 e o pagamento é no mês seguinte: a folha de ${h.nomeMes(mesFolha)} é paga em ${h.nomeMes(C.mesPagamento(mesFolha))}.
+        Os números que já estão nos campos são os que estão salvos: é só trocar pelo contador do relatório e salvar.</p></div>
+    <div class="card">
       <div class="g3">
         ${h.campo('Data da leitura', `<input id="lcData" type="date" value="${L.data}" data-change="impLanc" data-k="data">`)}
         ${h.campo('Tipo da leitura', sel('tipo', Object.entries(C.TIPOS), L.tipo, 'id="lcTipo" data-change="impLanc" data-k="tipo"'))}
@@ -189,7 +197,7 @@ function vConferir() {
     </div>`;
   };
   return `<div class="cf-topo card">
-      <div class="cf-total"><span>Total a pagar · ${h.nomeMes(mes)}${r.parcial ? ' · parcial' : ''}</span><b>${brl(r.total)}</b>
+      <div class="cf-total"><span>Folha de ${h.nomeMes(mes)} · paga em ${h.nomeMes(C.mesPagamento(mes)).split(' ')[0]}${r.parcial ? ' · parcial' : ''}</span><b>${brl(r.total)}</b>
         <small>${int(r.pagCor)} coloridas × ${r.preco ? precoTxt(r.preco.cor) : '—'} + ${int(r.pagPb)} P&amp;B × ${r.preco ? precoTxt(r.preco.pb) : '—'}${r.desconto ? ` − desconto ${brl(r.desconto)}` : ''}</small></div>
       <div class="cf-prog"><div class="prog-h"><span>Conferidas</span><b>${feitas} de ${tot}</b></div><div class="bar"><i style="width:${pct}%"></i></div>
         <div class="cf-btns no-print"><button class="btn sm" data-act="impConfTodas">${h.ic('check')}Marcar todas</button><button class="btn sm ghost" data-act="impConfLimpar">Limpar</button></div></div>
@@ -211,13 +219,13 @@ function vCobranca() {
   if (!r.temDado) return `<div class="card">${h.vazio(`Sem leituras em ${h.nomeMes(mes)}`, 'Lance as leituras para ver o valor a pagar.')}</div>`;
   const pr = r.preco;
   const anexos = i.anexos || [];
-  return `<div class="so-print imp-cab"><h2>Impressoras locadas · COPYGRAF</h2><p>Cobrança de ${h.nomeMes(mes)} · emitido em ${h.fmtData(h.hoje())}</p></div>
+  return `<div class="so-print imp-cab"><h2>Impressoras locadas · COPYGRAF</h2><p>Folha de ${h.nomeMes(mes)} (pagamento em ${h.nomeMes(C.mesPagamento(mes))}) · emitido em ${h.fmtData(h.hoje())}</p></div>
     ${pr ? '' : '<p class="hint">Não há preço cadastrado para este mês. Cadastre em Cadastro → Preços.</p>'}
     <div class="kpis">
       <div class="kpi"><span>Coloridas</span><b>${brl(r.valorCor)}</b><small>${int(r.pagCor)} pág. × ${pr ? precoTxt(pr.cor) : '—'}</small></div>
       <div class="kpi"><span>Preto e branco</span><b>${brl(r.valorPb)}</b><small>${int(r.pagPb)} pág. × ${pr ? precoTxt(pr.pb) : '—'}</small></div>
       <div class="kpi"><span>Desconto / ajuste</span><b>${brl(r.desconto ? -r.desconto : 0)}</b><small>${h.esc(i.obs || 'sem desconto')}</small></div>
-      <div class="kpi ok"><span>Total a pagar à COPYGRAF${r.parcial ? ' · parcial' : ''}</span><b>${brl(r.total)}</b><small>${fech ? `Mês fechado${i.fechadoPor ? ' por ' + h.esc(i.fechadoPor) : ''}` : r.parcial ? `${r.pendentes} sem fechamento` : 'Pronto para fechar'}</small></div>
+      <div class="kpi ok"><span>Total a pagar à COPYGRAF${r.parcial ? ' · parcial' : ''}</span><b>${brl(r.total)}</b><small>Pagamento em ${h.nomeMes(C.mesPagamento(mes))} · ${fech ? `folha fechada${i.fechadoPor ? ' por ' + h.esc(i.fechadoPor) : ''}` : r.parcial ? `${r.pendentes} sem fechamento` : 'pronta para fechar'}</small></div>
     </div>
     <div class="tools no-print">
       ${fech ? (souAdmin() ? `<button class="btn" data-act="impReabrir">Reabrir mês</button>` : '<span class="muted">Só o administrador reabre o mês.</span>')
@@ -397,8 +405,8 @@ function vComparar() {
     return `<tr class="clicavel ${i === sel ? 'sel' : ''}" data-act="impCmpMes" data-mes="${m}"><td><strong>${h.nomeMes(m)}</strong>${x.parcial && x.status !== 'FECHADO' ? '<small>parcial</small>' : ''}</td>
       <td class="r mono">${int(x.pagCor)}</td><td class="r mono">${int(x.pagPb)}</td><td class="r mono"><b>${brl(val(x))}</b>${pago(x) != null ? '<small> pago</small>' : ''}</td>
       <td class="r mono h-sm">${dv == null ? '—' : `<span class="cmp-d ${dv > 0 ? 'sobe' : dv < 0 ? 'desce' : ''}">${dv > 0 ? '▲' : dv < 0 ? '▼' : ''} ${brl(Math.abs(dv))}</span>`}</td></tr>`; };
-  return `<div class="card cmp-hero"><div class="cmp-topo"><div><span class="cmp-k">${rotuloSel}</span><h2>${h.nomeMes(mes)}</h2>
-        <small class="muted">${pago(r) != null ? `NF ${h.esc(r.info.nf || '—')} · pago em ${r.info.dataPag ? h.fmtData(r.info.dataPag) : '—'}` : r.status === 'FECHADO' ? 'Mês fechado' : r.parcial ? 'Mês ainda não fechado' : 'Todas as impressoras com fechamento'}</small></div>
+  return `<div class="card cmp-hero"><div class="cmp-topo"><div><span class="cmp-k">${rotuloSel}</span><h2>Folha de ${h.nomeMes(mes)}</h2>
+        <small class="muted">Paga em ${h.nomeMes(C.mesPagamento(mes))} · ${pago(r) != null ? `NF ${h.esc(r.info.nf || '—')} · pago em ${r.info.dataPag ? h.fmtData(r.info.dataPag) : '—'}` : r.status === 'FECHADO' ? 'Mês fechado' : r.parcial ? 'Mês ainda não fechado' : 'Todas as impressoras com fechamento'}</small></div>
       <div class="cmp-total"><b>${brl(val(r))}</b>${seta(val(r), ant ? val(ant) : null, v => brl(v))}</div></div>
     <div class="cmp-folhas">
       <div><span><i class="c-cor"></i>Folhas coloridas</span><b>${int(r.pagCor)}</b><em>${brl(r.valorCor)}${pr ? ` · ${precoTxt(pr.cor)} cada` : ''}</em>${seta(r.pagCor, ant?.pagCor ?? null, v => int(v) + ' fls')}</div>
@@ -445,8 +453,8 @@ function vCadastro() {
         <div class="card"><h3>Dias de registro do consumo</h3>
           <div class="pills">${[1, 2, 3, 4, 5, 6].map(n => `<button class="pill ${d.dias.includes(n) ? 'on' : ''}" data-act="impDia" data-d="${n}">${C.DIAS[n].slice(0, 3)}</button>`).join('')}</div>
           <p class="nota" style="margin-top:10px">Nesses dias a Agenda e o Painel avisam que é dia de leitura.</p>
-          <label class="imp-filtro" style="margin-top:12px">Conferir o mês anterior no dia ${sel('diaConf', Array.from({ length: 28 }, (_, i) => [i + 1, i + 1]), d.diaConf, 'data-change="impDiaConf"')}</label>
-          <p class="nota" style="margin-top:6px">Esse dia entra na Agenda e no aviso de WhatsApp até o mês ser conferido ou fechado.</p>
+          <label class="imp-filtro" style="margin-top:12px">Conferir a folha do mês no dia ${sel('diaConf', Array.from({ length: 28 }, (_, i) => [i + 1, i + 1]), d.diaConf, 'data-change="impDiaConf"')}</label>
+          <p class="nota" style="margin-top:6px">A folha fecha dia 05 e é lida dia 06. Esse dia entra na Agenda e no aviso de WhatsApp até a folha ser conferida ou fechada.</p>
           <p class="nota" style="margin-top:6px">${state.config.zapMeu ? `Aviso pelo WhatsApp vai para <b>${h.esc(state.config.zapMeu)}</b>.` : 'Para receber o aviso no WhatsApp, cadastre "Meu WhatsApp" no sino de alertas (aba Painel).'}</p>
           <button class="btn block" data-act="impIcs">${h.ic('agenda')}Lembrete para a agenda do celular (.ics)</button></div>
       </div>
@@ -577,6 +585,13 @@ const irLancar = (data, mes) => {
 const anexoDoMes = aid => (D().meses[h.ui.mes]?.anexos || []).find(a => a.id === aid);
 
 export const impActs = {
+  impAtalhoHoje: () => { U().lanc = null; h.render(); },
+  impAtalhoFech: el => {
+    const mes = el.dataset.mes, d = D();
+    const ja = d.leituras.find(l => l.tipo === 'FECHAMENTO' && l.mes === mes);
+    U().lanc = { data: ja ? ja.data : mes + '-06', tipo: 'FECHAMENTO', mes, vals: {} };
+    h.render(); window.scrollTo(0, 0);
+  },
   impCmpMes: el => { U().cmp = el.dataset.mes; h.render(); window.scrollTo(0, 0); },
   impSub: el => { if (souFuncionario() && !SUBS_FUNC.includes(el.dataset.s)) return; U().sub = el.dataset.s; h.ui.anim = true; h.render(); window.scrollTo(0, 0); },
   impIrLancar: el => irLancar(el.dataset.data, el.dataset.mes),
@@ -652,7 +667,7 @@ export const impActs = {
   impImprimir: () => window.print(),
   impExcel: exportarExcel,
   impPagamento: () => { const mes = h.ui.mes, r = C.resumoMes(D(), mes);
-    h.dPedido(null, { forn: 'COPYGRAF', venc: h.hoje(), valor: C.txtCent(r.total), descricao: `Impressoras locadas – ${h.nomeMes(mes)} (${int(r.pagCor)} color. + ${int(r.pagPb)} P&B)` }); },
+    h.dPedido(null, { forn: 'COPYGRAF', venc: C.mesPagamento(mes) + '-10', valor: C.txtCent(r.total), descricao: `Impressoras locadas – folha de ${h.nomeMes(mes)} (${int(r.pagCor)} color. + ${int(r.pagPb)} P&B)` }); },
   impVerAnexo: el => { const a = anexoDoMes(el.dataset.aid); if (a) h.dVer(a); },
   impBaixarAnexo: el => { const a = anexoDoMes(el.dataset.aid); if (a) h.baixar(a); },
   impDelAnexo: el => { const m = D().meses[h.ui.mes], a = anexoDoMes(el.dataset.aid);

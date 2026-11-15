@@ -595,3 +595,6 @@ tr.clicavel:hover td { background: var(--surface2); }
 .cmp-d { font-weight: 700; font-size: 12px; } .cmp-d.sobe { color: var(--bad); } .cmp-d.desce { color: var(--ok); }
 tr.sel td { background: var(--accent-soft); }
 @media (max-width: 700px) { .cmp-folhas { grid-template-columns: 1fr; } .cmp-total { text-align: left; } }
+
+.lc-atalhos b { display: block; margin-bottom: 8px; }
+.lc-atalhos .pill { height: auto; min-height: 34px; padding: 6px 14px; white-space: normal; text-align: left; }

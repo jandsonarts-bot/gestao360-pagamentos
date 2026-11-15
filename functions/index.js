@@ -176,13 +176,13 @@ function avisosImpressoras(imp, hoje) {
         : `falta a leitura de ${nome} ${dia.slice(8)}/${dia.slice(5, 7)}: ${falta} de ${ativas.length} impressoras`);
     }
   }
-  const diaConf = imp.diaConf >= 1 && imp.diaConf <= 28 ? imp.diaConf : 5;
+  const diaConf = imp.diaConf >= 1 && imp.diaConf <= 28 ? imp.diaConf : 6;
   if (Number(hoje.slice(8)) >= diaConf) {
-    const mes = addMes(hoje.slice(0, 7), -1), info = (imp.meses || {})[mes] || {};
+    const mes = hoje.slice(0, 7), info = (imp.meses || {})[mes] || {};   // folha do mês, fechada dia 05
     const temDado = leituras.some(l => l.mes === mes) || (imp.totais || []).some(t => t.mes === mes);
     const conferidas = Object.keys(info.conf || {}).length;
     if (temDado && info.status !== 'FECHADO' && conferidas < ativas.length) {
-      out.push(`dia de conferir as impressoras de ${MESES_PT[+mes.slice(5) - 1]}/${mes.slice(0, 4)}: ${conferidas} de ${ativas.length} conferidas`);
+      out.push(`dia de conferir a folha de ${MESES_PT[+mes.slice(5) - 1]}/${mes.slice(0, 4)} (paga em ${MESES_PT[+addMes(mes, 1).slice(5) - 1]}): ${conferidas} de ${ativas.length} conferidas`);
     }
   }
   return out;
