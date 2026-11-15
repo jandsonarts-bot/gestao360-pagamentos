@@ -371,6 +371,53 @@ function vResumo() {
     </div>`;
 }
 
+
+// ---------- comparativo: último valor pago e mês a mês ----------
+function vComparar() {
+  const d = D(), u = U();
+  const todos = C.mesesComDados(d, h.hoje().slice(0, 7)).map(m => [m, C.resumoMes(d, m)]).filter(x => x[1].temDado);
+  if (!todos.length) return `<div class="card">${h.vazio('Sem meses para comparar', 'Lance as leituras ou importe o histórico.')}</div>`;
+  const pago = r => r.info.valorPago && C.dec4(r.info.valorPago) != null ? C.centavos(C.dec4(r.info.valorPago)) : null;
+  const val = r => pago(r) ?? r.total;
+  let ult = -1;
+  for (let i = todos.length - 1; i >= 0 && ult < 0; i--) if (pago(todos[i][1]) != null) ult = i;
+  for (let i = todos.length - 1; i >= 0 && ult < 0; i--) if (todos[i][1].status === 'FECHADO') ult = i;
+  if (ult < 0) ult = todos.length - 1;
+  let sel = todos.findIndex(x => x[0] === u.cmp); if (sel < 0) sel = ult;
+  const [mes, r] = todos[sel], ant = sel > 0 ? todos[sel - 1][1] : null;
+  const rotuloSel = sel !== ult ? 'Mês selecionado' : pago(r) != null ? 'Último valor pago' : r.status === 'FECHADO' ? 'Último mês fechado' : 'Último mês com leituras · valor calculado';
+  const seta = (atual, antes, fmt) => {
+    if (antes == null) return '<small class="muted">sem mês anterior</small>';
+    const dif = atual - antes, pct = antes ? Math.round(dif / Math.abs(antes) * 1000) / 10 : null;
+    if (dif === 0) return '<small class="muted">igual ao mês anterior</small>';
+    return `<small class="cmp-d ${dif > 0 ? 'sobe' : 'desce'}">${dif > 0 ? '▲' : '▼'} ${fmt(Math.abs(dif))}${pct != null ? ` (${Math.abs(pct).toLocaleString('pt-BR')}%)` : ''} vs ${mesCurto(todos[sel - 1][0])}</small>`;
+  };
+  const pr = r.preco, recentes = todos.slice(-12), rot = recentes.map(x => mesCurto(x[0]));
+  const linhaTab = ([m, x], i) => { const a = i > 0 ? todos[i - 1][1] : null, dv = a ? val(x) - val(a) : null;
+    return `<tr class="clicavel ${i === sel ? 'sel' : ''}" data-act="impCmpMes" data-mes="${m}"><td><strong>${h.nomeMes(m)}</strong>${x.parcial && x.status !== 'FECHADO' ? '<small>parcial</small>' : ''}</td>
+      <td class="r mono">${int(x.pagCor)}</td><td class="r mono">${int(x.pagPb)}</td><td class="r mono"><b>${brl(val(x))}</b>${pago(x) != null ? '<small> pago</small>' : ''}</td>
+      <td class="r mono h-sm">${dv == null ? '—' : `<span class="cmp-d ${dv > 0 ? 'sobe' : dv < 0 ? 'desce' : ''}">${dv > 0 ? '▲' : dv < 0 ? '▼' : ''} ${brl(Math.abs(dv))}</span>`}</td></tr>`; };
+  return `<div class="card cmp-hero"><div class="cmp-topo"><div><span class="cmp-k">${rotuloSel}</span><h2>${h.nomeMes(mes)}</h2>
+        <small class="muted">${pago(r) != null ? `NF ${h.esc(r.info.nf || '—')} · pago em ${r.info.dataPag ? h.fmtData(r.info.dataPag) : '—'}` : r.status === 'FECHADO' ? 'Mês fechado' : r.parcial ? 'Mês ainda não fechado' : 'Todas as impressoras com fechamento'}</small></div>
+      <div class="cmp-total"><b>${brl(val(r))}</b>${seta(val(r), ant ? val(ant) : null, v => brl(v))}</div></div>
+    <div class="cmp-folhas">
+      <div><span><i class="c-cor"></i>Folhas coloridas</span><b>${int(r.pagCor)}</b><em>${brl(r.valorCor)}${pr ? ` · ${precoTxt(pr.cor)} cada` : ''}</em>${seta(r.pagCor, ant?.pagCor ?? null, v => int(v) + ' fls')}</div>
+      <div><span><i class="c-pb"></i>Folhas preto e branco</span><b>${int(r.pagPb)}</b><em>${brl(r.valorPb)}${pr ? ` · ${precoTxt(pr.pb)} cada` : ''}</em>${seta(r.pagPb, ant?.pagPb ?? null, v => int(v) + ' fls')}</div>
+      <div><span>Total de folhas</span><b>${int(r.pagCor + r.pagPb)}</b><em>${r.desconto ? `desconto ${brl(r.desconto)}` : 'sem desconto'}</em>${seta(r.pagCor + r.pagPb, ant ? ant.pagCor + ant.pagPb : null, v => int(v) + ' fls')}</div>
+    </div></div>
+    <div class="cols">
+      <div class="card"><h3>Valor por mês (R$)</h3>${grafico('barras', rot, [
+        { nome: 'Colorida', cor: 'var(--c1)', vals: recentes.map(x => x[1].valorCor) }, { nome: 'Preto e branco', cor: 'var(--muted)', vals: recentes.map(x => x[1].valorPb) }],
+        v => brl(v), v => 'R$ ' + curto(Math.round(v / 100)))}</div>
+      <div class="card"><h3>Folhas por mês</h3>${grafico('barras', rot, [
+        { nome: 'Coloridas', cor: 'var(--c1)', vals: recentes.map(x => x[1].pagCor) }, { nome: 'Preto e branco', cor: 'var(--muted)', vals: recentes.map(x => x[1].pagPb) }],
+        v => int(v) + ' folhas')}</div>
+    </div>
+    <div class="card flush"><h3 class="imp-h">Comparar mês a mês <small class="muted" style="font-weight:500">· toque num mês para ver em cima</small></h3><div class="imp-scroll"><table>
+      <thead><tr><th>Mês</th><th class="r">Coloridas</th><th class="r">P&amp;B</th><th class="r">Valor</th><th class="r h-sm">Diferença</th></tr></thead>
+      <tbody>${todos.map((x, i) => [x, i]).reverse().map(([x, i]) => linhaTab(x, i)).join('')}</tbody></table></div></div>`;
+}
+
 // ---------- cadastro ----------
 function vCadastro() {
   const d = D(), u = U(), ST = { ATIVA: ['pago', 'Ativa'], DESATIVADA: ['', 'Desativada'], SUBSTITUIDA: ['proximo', 'Substituída'] };
@@ -456,7 +503,7 @@ function ics() {
 }
 
 // ---------- tela principal ----------
-const SUBS = { conferir: ['Conferir', vConferir], resumo: ['Resumo', vResumo], lancar: ['Lançar leituras', vLancar], mes: ['Mês', vMes], cobranca: ['Cobrança', vCobranca], historico: ['Histórico', vHist], cadastro: ['Cadastro', vCadastro] };
+const SUBS = { conferir: ['Conferir', vConferir], comparar: ['Comparativo', vComparar], resumo: ['Resumo', vResumo], lancar: ['Lançar leituras', vLancar], mes: ['Mês', vMes], cobranca: ['Cobrança', vCobranca], historico: ['Histórico', vHist], cadastro: ['Cadastro', vCadastro] };
 const SUBS_FUNC = ['lancar', 'mes'];   // funcionário: lança leituras e confere a grade do mês (sem valores em R$)
 export function vImpressoras() {
   const d = D(), u = U(), func = souFuncionario();
@@ -530,6 +577,7 @@ const irLancar = (data, mes) => {
 const anexoDoMes = aid => (D().meses[h.ui.mes]?.anexos || []).find(a => a.id === aid);
 
 export const impActs = {
+  impCmpMes: el => { U().cmp = el.dataset.mes; h.render(); window.scrollTo(0, 0); },
   impSub: el => { if (souFuncionario() && !SUBS_FUNC.includes(el.dataset.s)) return; U().sub = el.dataset.s; h.ui.anim = true; h.render(); window.scrollTo(0, 0); },
   impIrLancar: el => irLancar(el.dataset.data, el.dataset.mes),
   impIrConferir: el => { if (C.mesValido(el.dataset.mes)) h.ui.mes = el.dataset.mes; U().sub = 'conferir'; h.ui.view = 'impressoras'; h.ui.anim = true; h.render(); window.scrollTo(0, 0); },
