@@ -225,12 +225,13 @@ function vCobranca() {
       <div class="kpi"><span>Coloridas</span><b>${brl(r.valorCor)}</b><small>${int(r.pagCor)} pág. × ${pr ? precoTxt(pr.cor) : '—'}</small></div>
       <div class="kpi"><span>Preto e branco</span><b>${brl(r.valorPb)}</b><small>${int(r.pagPb)} pág. × ${pr ? precoTxt(pr.pb) : '—'}</small></div>
       <div class="kpi"><span>Desconto / ajuste</span><b>${brl(r.desconto ? -r.desconto : 0)}</b><small>${h.esc(i.obs || 'sem desconto')}</small></div>
-      <div class="kpi ok"><span>Total a pagar à COPYGRAF${r.parcial ? ' · parcial' : ''}</span><b>${brl(r.total)}</b><small>Pagamento em ${h.nomeMes(C.mesPagamento(mes))} · ${fech ? `folha fechada${i.fechadoPor ? ' por ' + h.esc(i.fechadoPor) : ''}` : r.parcial ? `${r.pendentes} sem fechamento` : 'pronta para fechar'}</small></div>
+      <div class="kpi ok"><span>Total a pagar à COPYGRAF${r.parcial ? ' · parcial' : ''}</span><b>${brl(r.total)}</b><small>Pagamento em ${h.nomeMes(C.mesPagamento(mes))} · ${fech ? `folha fechada${i.pago ? ' e paga' : ''}${i.fechadoPor ? ' por ' + h.esc(i.fechadoPor) : ''}` : r.parcial ? `${r.pendentes} sem fechamento` : 'pronta para fechar'}</small></div>
     </div>
     <div class="tools no-print">
       ${fech ? (souAdmin() ? `<button class="btn" data-act="impReabrir">Reabrir mês</button>` : '<span class="muted">Só o administrador reabre o mês.</span>')
         : `<button class="btn primary" data-act="impFechar">${h.ic('check')}Fechar mês</button>`}
       <span class="grow"></span>
+      <button class="btn" data-act="impPaga">${h.ic('check')}${i.pago ? 'Desmarcar como paga' : 'Marcar como paga'}</button>
       <button class="btn" data-act="impPagamento" title="Cria o pagamento na agenda">${h.ic('mais')}Lançar em Pagamentos</button>
       <button class="btn" data-act="impImprimir">${h.ic('baixar')}Imprimir / PDF</button>
       <button class="btn" data-act="impExcel">${h.ic('baixar')}Exportar Excel</button>
@@ -388,12 +389,12 @@ function vComparar() {
   const pago = r => r.info.valorPago && C.dec4(r.info.valorPago) != null ? C.centavos(C.dec4(r.info.valorPago)) : null;
   const val = r => pago(r) ?? r.total;
   let ult = -1;
-  for (let i = todos.length - 1; i >= 0 && ult < 0; i--) if (pago(todos[i][1]) != null) ult = i;
+  for (let i = todos.length - 1; i >= 0 && ult < 0; i--) if (pago(todos[i][1]) != null || todos[i][1].info.pago) ult = i;
   for (let i = todos.length - 1; i >= 0 && ult < 0; i--) if (todos[i][1].status === 'FECHADO') ult = i;
   if (ult < 0) ult = todos.length - 1;
   let sel = todos.findIndex(x => x[0] === u.cmp); if (sel < 0) sel = ult;
   const [mes, r] = todos[sel], ant = sel > 0 ? todos[sel - 1][1] : null;
-  const rotuloSel = sel !== ult ? 'Mês selecionado' : pago(r) != null ? 'Último valor pago' : r.status === 'FECHADO' ? 'Último mês fechado' : 'Último mês com leituras · valor calculado';
+  const rotuloSel = sel !== ult ? 'Mês selecionado' : pago(r) != null || r.info.pago ? 'Último valor pago' : r.status === 'FECHADO' ? 'Último mês fechado' : 'Último mês com leituras · valor calculado';
   const seta = (atual, antes, fmt) => {
     if (antes == null) return '<small class="muted">sem mês anterior</small>';
     const dif = atual - antes, pct = antes ? Math.round(dif / Math.abs(antes) * 1000) / 10 : null;
@@ -403,10 +404,10 @@ function vComparar() {
   const pr = r.preco, recentes = todos.slice(-12), rot = recentes.map(x => mesCurto(x[0]));
   const linhaTab = ([m, x], i) => { const a = i > 0 ? todos[i - 1][1] : null, dv = a ? val(x) - val(a) : null;
     return `<tr class="clicavel ${i === sel ? 'sel' : ''}" data-act="impCmpMes" data-mes="${m}"><td><strong>${h.nomeMes(m)}</strong>${x.parcial && x.status !== 'FECHADO' ? '<small>parcial</small>' : ''}</td>
-      <td class="r mono">${int(x.pagCor)}</td><td class="r mono">${int(x.pagPb)}</td><td class="r mono"><b>${brl(val(x))}</b>${pago(x) != null ? '<small> pago</small>' : ''}</td>
+      <td class="r mono">${int(x.pagCor)}</td><td class="r mono">${int(x.pagPb)}</td><td class="r mono"><b>${brl(val(x))}</b>${pago(x) != null || x.info.pago ? '<small> pago</small>' : ''}</td>
       <td class="r mono h-sm">${dv == null ? '—' : `<span class="cmp-d ${dv > 0 ? 'sobe' : dv < 0 ? 'desce' : ''}">${dv > 0 ? '▲' : dv < 0 ? '▼' : ''} ${brl(Math.abs(dv))}</span>`}</td></tr>`; };
   return `<div class="card cmp-hero"><div class="cmp-topo"><div><span class="cmp-k">${rotuloSel}</span><h2>Folha de ${h.nomeMes(mes)}</h2>
-        <small class="muted">Paga em ${h.nomeMes(C.mesPagamento(mes))} · ${pago(r) != null ? `NF ${h.esc(r.info.nf || '—')} · pago em ${r.info.dataPag ? h.fmtData(r.info.dataPag) : '—'}` : r.status === 'FECHADO' ? 'Mês fechado' : r.parcial ? 'Mês ainda não fechado' : 'Todas as impressoras com fechamento'}</small></div>
+        <small class="muted">Paga em ${h.nomeMes(C.mesPagamento(mes))} · ${pago(r) != null ? `NF ${h.esc(r.info.nf || '—')} · pago em ${r.info.dataPag ? h.fmtData(r.info.dataPag) : '—'}` : r.info.pago ? 'Folha fechada e paga' : r.status === 'FECHADO' ? 'Mês fechado' : r.parcial ? 'Mês ainda não fechado' : 'Todas as impressoras com fechamento'}</small></div>
       <div class="cmp-total"><b>${brl(val(r))}</b>${seta(val(r), ant ? val(ant) : null, v => brl(v))}</div></div>
     <div class="cmp-folhas">
       <div><span><i class="c-cor"></i>Folhas coloridas</span><b>${int(r.pagCor)}</b><em>${brl(r.valorCor)}${pr ? ` · ${precoTxt(pr.cor)} cada` : ''}</em>${seta(r.pagCor, ant?.pagCor ?? null, v => int(v) + ' fls')}</div>
@@ -669,6 +670,7 @@ export const impActs = {
     const m = garantirMes(mes); m.status = 'ABERTO'; delete m.precoCor; delete m.precoPb; delete m.total; m.reabertoPor = eu(); m.reabertoEm = new Date().toISOString();
     save(); h.toast(`${h.nomeMes(mes)} reaberto`);
   },
+  impPaga: () => { const m = garantirMes(h.ui.mes); m.pago = !m.pago; if (m.pago) m.pagoEm = new Date().toISOString(); save(); h.toast(m.pago ? 'Folha marcada como paga' : 'Marca de paga removida'); },
   impImprimir: () => window.print(),
   impExcel: exportarExcel,
   impPagamento: () => { const mes = h.ui.mes, r = C.resumoMes(D(), mes);
@@ -824,7 +826,7 @@ export function agendaDia(data) {
   }
   if (Number(data.slice(8)) === d.diaConf) {   // dia de conferir o mês anterior
     const cf = C.conferenciaDoMes(d, data.slice(0, 7));
-    if (cf) itens.push({ tipo: 'conferir', st: cf.pronta ? 'pago' : data < hoje ? 'atrasado' : data === hoje ? 'hoje' : 'pendente', rotulo: 'Conferir impressoras', cf });
+    if (cf) itens.push({ tipo: 'conferir', st: cf.pronta ? 'pago' : data < hoje ? 'atrasado' : data === hoje ? 'hoje' : 'pendente', rotulo: 'Conferir e fechar folha', cf });
   }
   return itens.length ? { itens, feitas, total, st: itens[0].st } : null;
 }
@@ -837,7 +839,7 @@ export function agendaPainel(data) {
     : i.tipo === 'leitura'
     ? `<div class="imp-aviso ${cls(i.st)}"><span><b>Leitura das impressoras${i.desl ? ' (pós-feriado)' : ''}</b><br>${a.feitas} de ${a.total} lançadas${i.st === 'pendente' ? ' · dia de registro do consumo' : ''}</span>
       <button class="btn sm ${i.st === 'pago' ? '' : 'primary'}" data-act="impIrLancar" data-data="${data}">${i.st === 'pago' ? 'Ver' : 'Lançar'}</button></div>`
-    : `<div class="imp-aviso ${cls(i.st)}"><span><b>Conferir as impressoras de ${h.nomeMes(i.cf.mes)}</b><br>${i.cf.feitas} de ${i.cf.total} conferidas${i.cf.pronta ? ' · concluído' : ''}</span>
+    : `<div class="imp-aviso ${cls(i.st)}"><span><b>Conferir e fechar a folha de ${h.nomeMes(i.cf.mes)}</b><br>${i.cf.feitas} de ${i.cf.total} conferidas${i.cf.pronta ? ' · concluído' : ''}</span>
       <button class="btn sm ${i.st === 'pago' ? '' : 'primary'}" data-act="impIrConferir" data-mes="${i.cf.mes}">${i.st === 'pago' ? 'Ver' : 'Conferir'}</button></div>`).join('');
 }
 export function avisoPainel() {

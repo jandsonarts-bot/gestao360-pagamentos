@@ -206,7 +206,7 @@ function avisosImpressoras(imp, hoje) {
     const temDado = leituras.some(l => l.mes === mes) || (imp.totais || []).some(t => t.mes === mes);
     const conferidas = Object.keys(info.conf || {}).length;
     if (temDado && info.status !== 'FECHADO' && conferidas < ativas.length) {
-      out.push(`dia de conferir a folha de ${MESES_PT[+mes.slice(5) - 1]}/${mes.slice(0, 4)} (paga em ${MESES_PT[+addMes(mes, 1).slice(5) - 1]}): ${conferidas} de ${ativas.length} conferidas`);
+      out.push(`dia de conferir e fechar a folha de ${MESES_PT[+mes.slice(5) - 1]}/${mes.slice(0, 4)} (paga em ${MESES_PT[+addMes(mes, 1).slice(5) - 1]}): ${conferidas} de ${ativas.length} conferidas`);
     }
   }
   return out;

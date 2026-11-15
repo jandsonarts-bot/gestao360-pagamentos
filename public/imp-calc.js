@@ -23,6 +23,24 @@ export function normalizar(imp) {
     if (d.impressoras.length || d.leituras.length) { d.dias = [1]; d.avisoDesde = '2026-11-16'; d.atualizado = Date.now(); }
     d.semanaSegunda = true;
   }
+  // pedido em 16/11/2026: todas as folhas até Outubro já foram pagas (ficam fechadas e marcadas como pagas); só a de Novembro continua aberta
+  if (!d.foramPagasAteOutubro) {
+    if (d.impressoras.length && d.leituras.length) {
+      const agora = new Date().toISOString();
+      for (const mes of mesesComDados(d, '2026-11')) {
+        if (mes >= '2026-11') continue;
+        const info = d.meses[mes] ??= { desconto: '0', obs: '', status: 'ABERTO' };
+        if (info.status !== 'FECHADO') {
+          const r = resumoMes(d, mes);
+          if (!r.preco || !r.temDado) continue;
+          Object.assign(info, { status: 'FECHADO', precoCor: txt4(r.preco.cor), precoPb: txt4(r.preco.pb), total: txtCent(r.total), fechadoPor: 'já pago (importação)', fechadoEm: agora });
+        }
+        info.pago = true; info.pagoEm = agora;
+      }
+      d.atualizado = Date.now();
+    }
+    d.foramPagasAteOutubro = true;
+  }
   return d;
 }
 
@@ -285,7 +303,7 @@ export function avisos(imp, hoje) {
     && !imp.totais.some(t => t.imp === p.id && t.mes === ant)).length;
   if (semFech && Number(hoje.slice(8)) >= imp.diaConf) out.push({ tipo: 'fechamento', mes: ant, txt: `Falta a leitura de fechamento da folha de ${MESES_PT[+ant.slice(5) - 1]} (fecha com a leitura do dia 06) para ${semFech} impressora${semFech > 1 ? 's' : ''}.` });
   const cf = Number(hoje.slice(8)) >= imp.diaConf ? conferenciaDoMes(imp, hoje.slice(0, 7)) : null;   // folha do mês, fechada com a leitura do dia 06
-  if (cf && !cf.pronta) out.push({ tipo: 'conferir', mes: cf.mes, txt: `Dia de conferir a folha de ${MESES_PT[+cf.mes.slice(5) - 1]}/${cf.mes.slice(0, 4)} (paga em ${MESES_PT[+mesPagamento(cf.mes).slice(5) - 1]}): ${cf.feitas} de ${cf.total} conferidas.` });
+  if (cf && !cf.pronta) out.push({ tipo: 'conferir', mes: cf.mes, txt: `Dia de conferir e fechar a folha de ${MESES_PT[+cf.mes.slice(5) - 1]}/${cf.mes.slice(0, 4)} (paga em ${MESES_PT[+mesPagamento(cf.mes).slice(5) - 1]}): ${cf.feitas} de ${cf.total} conferidas.` });
   return out;
 }
 const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
