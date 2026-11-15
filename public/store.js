@@ -24,7 +24,7 @@ function seed() {
     v: 1, atualizado: 0,
     inicio: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
     config: { diasAlerta: 3, zapMeu: '', zapFin: '' },
-    empresas: [], pagamentos: {}, pedidos: [], docs: [],
+    empresas: [], pagamentos: {}, pedidos: [], docs: [], lembretes: [],
     imp: normalizarImp(),
   };
 }
@@ -35,6 +35,7 @@ function normalizar(s) {
   s.pedidos ??= [];
   s.docs ??= [];
   s.empresas ??= [];
+  s.lembretes ??= [];   // lembretes da agenda (sem valor, não entram nas contas)
   s.imp = normalizarImp(s.imp); // controle de impressoras locadas (aba Impressoras)
   return s;
 }

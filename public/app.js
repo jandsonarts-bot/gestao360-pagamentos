@@ -277,6 +277,7 @@ function vPainel() {
   ${instalar ? `<div class="card inst"><img class="logo" src="icon-192.png" alt=""><div><b>Instale o Gestão 360 neste aparelho</b><span>Abre em janela própria, com ícone na área de trabalho.</span></div>
     <button class="btn primary" data-act="instalar">${ic('baixar')}Instalar</button></div>` : ''}
   ${avisoPainel()}
+  ${vLembretesPainel()}
   <div class="kpis">
     <button class="kpi" data-act="kpi" data-f="todos"><span>Previsto no mês</span><b>${brl(total)}</b><small>${its.length} pagamentos</small></button>
     <button class="kpi ok" data-act="kpi" data-f="financeiro"><span>Enviado ao financeiro</span><b>${brl(env.reduce((s, i) => s + +i.valor, 0))}</b><small>${env.length} enviado${env.length === 1 ? '' : 's'}${its.some(i => i.pago) ? ` · ${its.filter(i => i.pago).length} já pago${its.filter(i => i.pago).length === 1 ? '' : 's'}` : ''}</small></button>
@@ -298,6 +299,37 @@ function vPainel() {
   </div>`;
 }
 
+
+// ---------- lembretes da agenda (sem pagamento) ----------
+const lembretesDoDia = dia => state.lembretes.filter(l => l.data === dia).sort((a, b) => (a.hora || '99').localeCompare(b.hora || '99') || a.titulo.localeCompare(b.titulo));
+function lembRow(l) {
+  return `<div class="row lemb ${l.feito ? 'feito' : ''}">
+    <button class="lb-check" data-act="feitoLembrete" data-id="${l.id}" aria-pressed="${!!l.feito}" aria-label="${l.feito ? 'Desmarcar' : 'Marcar como feito'}">${ic('check')}</button>
+    <div class="info" data-act="editarLembrete" data-id="${l.id}"><strong>${esc(l.titulo)}</strong>
+      <span>${l.hora ? esc(l.hora) + ' · ' : ''}${esc(l.desc || 'Lembrete')}</span></div>
+    <span class="badge lembrete">Lembrete</span></div>`;
+}
+function vLembretesPainel() {
+  const h0 = hoje(), lim = iso(new Date(Date.now() + 7 * 864e5));
+  const l = state.lembretes.filter(x => !x.feito && x.data >= h0 && x.data <= lim)
+    .sort((a, b) => a.data.localeCompare(b.data) || (a.hora || '99').localeCompare(b.hora || '99'));
+  if (!l.length) return '';
+  return `<div class="card"><h3>${ic('sino')}Lembretes dos próximos 7 dias <em>${l.length}</em></h3>${l.map(x => `<div class="row lemb">
+      <div class="dt lembrete"><b>${x.data.slice(8)}</b><span>${MESES[+x.data.slice(5, 7) - 1].slice(0, 3)}</span></div>
+      <div class="info" data-act="irDia" data-dia="${x.data}"><strong>${esc(x.titulo)}</strong><span>${x.hora ? esc(x.hora) + ' · ' : ''}${esc(x.desc || 'Lembrete')}</span></div>
+      <button class="lb-check" data-act="feitoLembrete" data-id="${x.id}" aria-pressed="false" aria-label="Marcar como feito">${ic('check')}</button></div>`).join('')}</div>`;
+}
+function dLembrete(l, pre = {}) {
+  const n = !l; l ??= { data: pre.data || hoje(), titulo: pre.titulo || '', desc: pre.desc || '', hora: '' };
+  abrir(`${cab(n ? 'Novo lembrete' : 'Editar lembrete', 'Aparece na agenda, sem valor e sem entrar nas contas.')}
+    <form data-form="lembrete" data-id="${l.id || ''}"><div class="body">
+      ${campo('Título', `<input name="titulo" required value="${esc(l.titulo)}" placeholder="Ex.: Aula da Saudade" autocomplete="off">`)}
+      <div class="g2">${campo('Data', `<input name="data" type="date" required value="${l.data}">`)}${campo('Hora (opcional)', `<input name="hora" type="time" value="${esc(l.hora)}">`)}</div>
+      ${campo('Detalhes', `<textarea name="desc" rows="3" placeholder="Ex.: Prof. Joelma, sala 09">${esc(l.desc)}</textarea>`)}
+    </div><footer>${n ? '' : `<button type="button" class="btn danger" data-act="delLembrete" data-id="${l.id}">Excluir</button>`}
+      <span class="grow"></span><button type="button" class="btn ghost" data-act="fechar">Cancelar</button><button class="btn primary" type="submit">Salvar</button></footer></form>`);
+}
+
 function vAgenda() {
   const [y, m] = ui.mes.split('-').map(Number);
   const n = new Date(y, m, 0).getDate(), ini = new Date(y, m - 1, 1).getDay();
@@ -309,21 +341,23 @@ function vAgenda() {
   }
   let cel = '<i></i>'.repeat(ini);
   for (let d = 1; d <= n; d++) {
-    const data = `${ui.mes}-${pad(d)}`, l = porDia[d] || [], imp = agendaDia(data); // imp: dia de leitura das impressoras
+    const data = `${ui.mes}-${pad(d)}`, l = porDia[d] || [], lb = lembretesDoDia(data), imp = agendaDia(data); // imp: dia de leitura das impressoras
     cel += `<button class="day ${data === h ? 'today' : ''} ${data === ui.dia ? 'sel' : ''}" data-act="dia" data-dia="${data}">
       <span class="num">${d}</span>
-      <span class="chips">${imp ? imp.itens.map(i => `<span class="chip ${i.st}">${i.rotulo}</span>`).join('') : ''}${l.slice(0, 3).map(i => `<span class="chip ${status(i)}">${esc(i.titulo)}</span>`).join('')}${l.length > 3 ? `<span class="more">+${l.length - 3}</span>` : ''}</span>
-      <span class="dots">${imp ? imp.itens.map(i => `<i class="${i.st}"></i>`).join('') : ''}${l.slice(0, 5).map(i => `<i class="${status(i)}"></i>`).join('')}</span>
+      <span class="chips">${imp ? imp.itens.map(i => `<span class="chip ${i.st}">${i.rotulo}</span>`).join('') : ''}${lb.slice(0, 2).map(x => `<span class="chip lembrete ${x.feito ? 'feito' : ''}">${x.hora ? esc(x.hora) + ' ' : ''}${esc(x.titulo)}</span>`).join('')}${l.slice(0, 3).map(i => `<span class="chip ${status(i)}">${esc(i.titulo)}</span>`).join('')}${l.length > 3 ? `<span class="more">+${l.length - 3}</span>` : ''}</span>
+      <span class="dots">${imp ? imp.itens.map(i => `<i class="${i.st}"></i>`).join('') : ''}${lb.slice(0, 2).map(() => '<i class="lembrete"></i>').join('')}${l.slice(0, 5).map(i => `<i class="${status(i)}"></i>`).join('')}</span>
     </button>`;
   }
-  const sel = porDia[+ui.dia.slice(8)] || [];
+  const sel = porDia[+ui.dia.slice(8)] || [], lembDia = lembretesDoDia(ui.dia);
   return `<div class="cols agenda">
     <div class="card cal"><div class="dow">${['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => `<span>${d}</span>`).join('')}</div>
       <div class="grid">${cel}</div>
-      <div class="legend"><span><i class="pago"></i>Pago</span><span><i class="pendente"></i>A vencer</span><span><i class="enviado"></i>No financeiro</span><span><i class="proximo"></i>Vence em breve</span><span><i class="atrasado"></i>Atrasado</span></div></div>
+      <div class="legend"><span><i class="pago"></i>Pago</span><span><i class="pendente"></i>A vencer</span><span><i class="enviado"></i>No financeiro</span><span><i class="proximo"></i>Vence em breve</span><span><i class="atrasado"></i>Atrasado</span><span><i class="lembrete"></i>Lembrete</span></div></div>
     <div class="card"><h3>${fmtData(ui.dia)} <em>${brl(sel.reduce((s, i) => s + +i.valor, 0))}</em></h3>
       ${agendaPainel(ui.dia)}
-      ${sel.length ? sel.map(linha).join('') : vazio('Dia livre', 'Nenhum pagamento agendado.')}
+      ${lembDia.map(lembRow).join('')}
+      ${sel.length ? sel.map(linha).join('') : (lembDia.length || agendaPainel(ui.dia) ? '' : vazio('Dia livre', 'Nada agendado neste dia.'))}
+      <button class="btn block" data-act="novoLembrete" data-data="${ui.dia}">${ic('sino')}Adicionar lembrete neste dia</button>
       <button class="btn block" data-act="novoPedido" data-venc="${ui.dia}">${ic('mais')}Agendar pagamento neste dia</button></div>
   </div>`;
 }
@@ -489,6 +523,7 @@ function dDetalhe(it) {
     </div>
     <footer>
       <button class="btn ghost" data-act="${it.kind === 'pedido' ? 'editarPedido' : 'editarEmpresa'}" data-id="${it.kind === 'pedido' ? it.key : e.id}">Editar</button>
+      ${it.kind === 'pedido' && !it.pago ? `<button class="btn ghost" data-act="virarLembrete" data-id="${it.key}" title="Tira o valor e deixa só o aviso na agenda">Virar lembrete</button>` : ''}
       <span class="grow"></span>
       ${it.pago ? `<button class="btn" data-act="desfazer">Desfazer baixa</button>` : `${it.enviado ? `<button class="btn" data-act="desfazerEnvio">Desfazer envio</button>` : `<button class="btn fin" data-act="enviarFin" ${ref(it)}>${ic('enviar')}Financeiro</button>`}
         <button class="btn ${it.enviado ? '' : 'primary'}" data-act="pagar" ${ref(it)} title="Use só quando o financeiro confirmar o pagamento">${ic('check')}${it.enviado ? 'Financeiro pagou' : 'Dar baixa'}</button>`}
@@ -585,6 +620,7 @@ function dNovo() {
   abrir(`${cab('Novo pagamento', 'Que tipo de pagamento você quer criar?')}
     <div class="body opts">
       <button class="opt" data-act="novoPedido">${ic('pedidos')}<b>Pagamento único</b><span>Pedido, nota ou boleto com data de vencimento. Dá para anexar o documento.</span></button>
+      <button class="opt" data-act="novoLembrete">${ic('sino')}<b>Lembrete</b><span>Compromisso na agenda sem valor: aula, reunião, visita. Não entra nas contas.</span></button>
       <button class="opt" data-act="novaEmpresa" data-cat="mensal">${ic('mensais')}<b>Mensal recorrente</b><span>Contrato que se repete todo mês no mesmo dia, fixo ou variável.</span></button>
     </div>`);
 }
@@ -673,6 +709,25 @@ const atual = () => ctx && achar(ctx.kind, ctx.key);
 const reabrir = () => { const it = atual(); it ? dDetalhe(it) : fechar(); };
 
 const acts = {
+  novoLembrete: el => dLembrete(null, { data: el.dataset.data }),
+  editarLembrete: el => { const l = state.lembretes.find(x => x.id === el.dataset.id); if (l) dLembrete(l); },
+  feitoLembrete: el => { const l = state.lembretes.find(x => x.id === el.dataset.id); if (l) { l.feito = !l.feito; save(); } },
+  delLembrete: el => {
+    const l = state.lembretes.find(x => x.id === el.dataset.id);
+    if (!l || !confirm(`Excluir o lembrete "${l.titulo}"?`)) return;
+    state.lembretes = state.lembretes.filter(x => x !== l); save(); fechar(); toast('Lembrete excluído');
+  },
+  irDia: el => { ui.view = 'agenda'; ui.mes = el.dataset.dia.slice(0, 7); ui.dia = el.dataset.dia; ui.anim = true; render(); window.scrollTo(0, 0); },
+  virarLembrete: el => {
+    const d = state.pedidos.find(x => x.id === el.dataset.id);
+    if (!d) return;
+    const anex = (d.anexos || []).length;
+    if (!confirm(`Transformar "${d.fornecedor}" em lembrete?\nO valor${anex ? ` e ${anex} anexo(s)` : ''} saem do pagamento; fica só o aviso na agenda.`)) return;
+    (d.anexos || []).forEach(delAnexo);
+    state.lembretes.push({ id: uid(), titulo: d.fornecedor, data: d.venc, hora: '', desc: [d.descricao, d.obs].filter(Boolean).join(' · ') });
+    state.pedidos = state.pedidos.filter(x => x !== d);
+    ui.mes = d.venc.slice(0, 7); ui.dia = d.venc; save(); fechar(); toast('Virou lembrete na agenda');
+  },
   gmodo: el => { (ui.g ??= {}).modo = el.dataset.m; render(); },
   gmes: el => { ui.mes = el.dataset.mes; ui.dia = null; ui.anim = false; render(); },
   ir: el => { ui.view = el.dataset.v; ui.anim = true; render(); window.scrollTo(0, 0); },
@@ -764,6 +819,13 @@ const acts = {
 };
 
 const forms = {
+  lembrete(v, f) {
+    const dados = { titulo: v.titulo.trim(), data: v.data, hora: v.hora || '', desc: (v.desc || '').trim() };
+    const l = state.lembretes.find(x => x.id === f.dataset.id);
+    if (l) Object.assign(l, dados); else state.lembretes.push({ id: uid(), ...dados });
+    ui.view = 'agenda'; ui.mes = v.data.slice(0, 7); ui.dia = v.data;
+    save(); fechar(); toast('Lembrete salvo na agenda');
+  },
   async equipe(v, f) {
     const lista = [...f.querySelectorAll('input[name=m]')].map(i => i.value);
     if (v.novo?.trim()) lista.push(v.novo);
@@ -862,7 +924,16 @@ document.addEventListener('change', async ev => {
 dlg.addEventListener('close', () => { ctx = null; });
 
 // ---------- lembretes ----------
+function notificarLembretes() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const l = state.lembretes.filter(x => x.data === hoje() && !x.feito);
+  const k = 'gestao360:notif-lemb';
+  if (!l.length || localStorage.getItem(k) === hoje()) return;
+  localStorage.setItem(k, hoje());
+  try { new Notification('Gestão 360 · Lembretes de hoje', { body: l.map(x => (x.hora ? x.hora + ' ' : '') + x.titulo).join(' · '), tag: 'gestao360-lemb' }); } catch {}
+}
 function notificar(forcar) {
+  notificarLembretes();
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   const al = alertas(); if (!al.length) return;
   const k = 'gestao360:notif';
