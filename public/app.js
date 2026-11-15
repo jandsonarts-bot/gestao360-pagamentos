@@ -965,7 +965,7 @@ document.addEventListener('pointermove', ev => {
 });
 // teclado: setas trocam o mês, N cria pagamento
 document.addEventListener('keydown', ev => {
-  if (dlg.open || ev.ctrlKey || ev.metaKey || ev.altKey || /INPUT|TEXTAREA|SELECT/.test(ev.target.tagName)) return;
+  if (dlg.open || ev.ctrlKey || ev.metaKey || ev.altKey || /INPUT|TEXTAREA|SELECT/.test(ev.target.tagName) || document.body.classList.contains('nasa-aberto') || ev.target.closest?.('.nasa-svg')) return;
   if (!app.querySelector('.shell')) return;
   if (!semMes() && ev.key === 'ArrowLeft') mudarMes(-1);
   else if (!semMes() && ev.key === 'ArrowRight') mudarMes(1);

@@ -601,3 +601,6 @@ tr.sel td { background: var(--accent-soft); }
 
 .g-prox { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-top: 10px; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--c2) 14%, transparent); font-size: 13px; }
 .g-prox > b { font-size: 17px; font-variant-numeric: tabular-nums; } .g-prox small { color: var(--muted); }
+
+.nasa-bloco { margin-bottom: 16px; } .nasa-bloco .nasa { margin-bottom: 0; } .nasa-cols { gap: 16px; } .nasa-cols .nasa { margin-bottom: 0; }
+@media print { .nasa, .nasa-show { display: none !important; } }

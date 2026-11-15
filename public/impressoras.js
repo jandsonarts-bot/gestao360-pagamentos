@@ -3,9 +3,10 @@
 import { state, save, cloud, uid, delAnexo, souFuncionario, lerFuncionarios, salvarFuncionarios } from './store.js';
 import * as C from './imp-calc.js';
 import { criarXlsx, lerXlsx, lerCsv, serialParaIso, E } from './xlsx.js';
+import { nasaChart, nasaPeriodo, nasaLigar, nasaApresentar, PALETA } from './nasa-charts.js';
 
 let h; // utilidades do app.js (esc, ic, abrir, fechar, cab, campo, toast, render, ui, subir, dVer, baixar, dPedido, hoje, fmtData, nomeMes, MESES, vazio)
-export function initImp(util) { h = util; }
+export function initImp(util) { h = util; nasaLigar(() => h.render()); }
 
 const D = () => state.imp;
 const btnAviso = a => a.tipo === 'conferir'
@@ -298,33 +299,24 @@ function exportarExcel() {
 const CORES_G = ['#2476ff', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#64748b', '#14b8a6', '#a16207'];
 const teto = max => { if (max <= 0) return 1; const p = 10 ** Math.floor(Math.log10(max)), m = max / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p; };
 const curto = n => n >= 1000 ? (n / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mil' : int(n);
-function grafico(tipo, rotulos, series, fmt, fmtEixo = curto) {
-  const W = 720, H = 250, L = 58, R = 10, T = 12, B = 30, n = rotulos.length;
-  if (!n || !series.length) return '<p class="muted">Sem dados para o gráfico.</p>';
-  const top = teto(Math.max(...series.flatMap(s => s.vals))), y = v => T + (H - T - B) * (1 - v / top), gw = (W - L - R) / n;
-  let g = '';
-  for (let i = 0; i <= 4; i++) { const v = top * i / 4; g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="g-linha"/><text x="${L - 8}" y="${y(v) + 4}" class="g-eixo" text-anchor="end">${fmtEixo(v)}</text>`; }
-  const passo = Math.ceil(n / 12);
-  rotulos.forEach((r, i) => { if (i % passo === 0) g += `<text x="${L + gw * (i + .5)}" y="${H - 9}" class="g-eixo" text-anchor="middle">${r}</text>`; });
-  if (tipo === 'barras') {
-    const bw = Math.min(28, gw * .76 / series.length);
-    series.forEach((s, k) => s.vals.forEach((v, i) => {
-      const x = L + gw * (i + .5) - bw * series.length / 2 + bw * k;
-      g += `<rect x="${x + 1}" y="${y(v)}" width="${bw - 2}" height="${Math.max(0, H - B - y(v))}" rx="3" fill="${s.cor}"><title>${h.esc(s.nome)} · ${rotulos[i]}: ${fmt(v)}</title></rect>`;
-    }));
-  } else {
-    series.forEach(s => {
-      g += `<polyline fill="none" stroke="${s.cor}" stroke-width="2.2" stroke-linejoin="round" points="${s.vals.map((v, i) => `${L + gw * (i + .5)},${y(v)}`).join(' ')}"/>`;
-      s.vals.forEach((v, i) => { g += `<circle cx="${L + gw * (i + .5)}" cy="${y(v)}" r="3.4" fill="${s.cor}"><title>${h.esc(s.nome)} · ${rotulos[i]}: ${fmt(v)}</title></circle>`; });
-    });
-  }
-  return `<svg class="grafico" viewBox="0 0 ${W} ${H}" role="img">${g}</svg>
-    <div class="legend">${series.map(s => `<span><i style="background:${s.cor}"></i>${h.esc(s.nome)}</span>`).join('')}</div>`;
+// gráficos estilo NASA (nasa-charts.js): mesma base para Histórico, Comparativo e modo apresentação
+const reais = c => c / 100;
+const brlR = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const eixoR = v => 'R$ ' + (v >= 1000 ? (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mil' : Math.round(v));
+const NEON_COR = '#22d3ee', NEON_PB = '#fbbf24';
+function graficoValor(id, grande, dados, rot, setor) {
+  const vc = x => (x.r.preco ? C.centavos(x.cor * x.r.preco.cor) : 0), vp = x => (x.r.preco ? C.centavos(x.pb * x.r.preco.pb) : 0);
+  const extras = setor ? [] : [{ nome: 'Desconto', cor: '#fb7185', vals: dados.map(x => reais(x.r.desconto)) }, { nome: 'A pagar', cor: '#4ade80', vals: dados.map(x => reais(x.r.total)) }];
+  return nasaChart({ id, titulo: setor ? 'Valor do setor por mês' : 'Valor da folha por mês', sub: 'R$ · coloridas + P&B (antes do desconto) · tracejado = média', rotulos: rot, tipo: 'barras', grande, empilhado: true, media: true,
+    series: [{ nome: 'Coloridas', cor: NEON_COR, vals: dados.map(x => reais(vc(x))) }, { nome: 'Preto e branco', cor: NEON_PB, vals: dados.map(x => reais(vp(x))) }], extras, fmt: brlR, fmtEixo: eixoR });
 }
+const graficoPaginas = (id, dados, rot, grande) => nasaChart({ id, titulo: 'Folhas impressas por mês', sub: 'páginas · coloridas × P&B', rotulos: rot, tipo: 'barras', grande,
+  series: [{ nome: 'Coloridas', cor: NEON_COR, vals: dados.map(x => x.cor) }, { nome: 'Preto e branco', cor: NEON_PB, vals: dados.map(x => x.pb) }], fmt: v => int(v) + ' fls' });
+const graficoImps = (id, dados, rot, imps, grande) => nasaChart({ id, titulo: 'Consumo por impressora', sub: 'páginas por mês · clique na legenda para isolar uma', rotulos: rot, tipo: 'linha', grande, total: false,
+  series: imps.map((p, k) => ({ nome: `${C.rotulo(p)} · ${C.nomeSetor(D(), p.setorId)}`, cor: PALETA[k % PALETA.length], vals: dados.map(x => x.porImp.get(p.id) || 0) })), fmt: v => int(v) + ' fls' });
 
 // ---------- histórico e painel ----------
-function vHist() {
-  const d = D(), u = U(), setor = u.setor;
+function calcHist(d, setor) {
   const todos = C.mesesComDados(d, h.hoje().slice(0, 7)).map(m => [m, C.resumoMes(d, m)]);
   while (todos.length > 1 && !todos[todos.length - 1][1].temDado) todos.pop();   // mês atual ainda sem leitura não entra nos gráficos
   const meses = todos.map(x => x[0]);
@@ -340,13 +332,17 @@ function vHist() {
   const ult = [...dados].reverse().find(x => x.cor + x.pb > 0);
   const rank = ult ? imps.map((p, k) => ({ p, v: ult.porImp.get(p.id) || 0, cor: CORES_G[k % CORES_G.length] })).sort((a, b) => b.v - a.v) : [];
   const maxRank = Math.max(1, ...rank.map(x => x.v));
+  return { dados, rot, imps, ult, rank, maxRank };
+}
+
+function vHist() {
+  const d = D(), u = U(), setor = u.setor;
+  const { dados, rot, imps, ult, rank, maxRank } = calcHist(d, setor);
   return `<div class="tools no-print"><label class="imp-filtro">Setor ${sel('setor', [['', 'Todos os setores'], ...d.setores.map(s => [s.id, s.nome])], setor, 'data-change="impSetorHist"')}</label>
-      <span class="grow"></span><button class="btn" data-act="impImprimir">${h.ic('baixar')}Imprimir / PDF</button></div>
-    <div class="cols">
-      <div class="card"><h3>Páginas por mês</h3>${grafico('barras', rot, [{ nome: 'Coloridas', cor: 'var(--c1)', vals: dados.map(x => x.cor) }, { nome: 'Preto e branco', cor: 'var(--muted)', vals: dados.map(x => x.pb) }], v => int(v) + ' páginas')}</div>
-      <div class="card"><h3>Valor por mês</h3>${grafico('barras', rot, [{ nome: setor ? 'Valor do setor (sem desconto)' : 'Valor a pagar', cor: 'var(--ok)', vals: dados.map(x => Math.max(0, x.valor)) }], v => brl(v), v => 'R$ ' + curto(Math.round(v / 100)))}</div>
-    </div>
-    <div class="card"><h3>Consumo por impressora</h3>${grafico('linhas', rot, imps.map((p, k) => ({ nome: `${C.rotulo(p)} · ${C.nomeSetor(d, p.setorId)}`, cor: CORES_G[k % CORES_G.length], vals: dados.map(x => x.porImp.get(p.id) || 0) })), v => int(v) + ' páginas')}</div>
+      <span class="grow"></span><button class="btn primary" data-act="impApresentar">${h.ic('agenda')}Apresentar em slides</button><button class="btn" data-act="impImprimir">${h.ic('baixar')}Imprimir / PDF</button></div>
+    <div class="no-print">${nasaPeriodo()}</div>
+    <div class="nasa-bloco">${graficoValor('h-valor', true, dados, rot, setor)}</div>
+    <div class="cols nasa-cols"><div>${graficoPaginas('h-pag', dados, rot)}</div><div>${graficoImps('h-imps', dados, rot, imps)}</div></div>
     ${rank.length ? `<div class="card"><h3>Quem mais imprimiu em ${h.nomeMes(ult.m)}</h3>${rank.map(x => `<div class="tipo"><div><span>${h.esc(C.rotulo(x.p))} · ${h.esc(C.nomeSetor(d, x.p.setorId))} ${tagTipo(x.p.tipo)}</span><b>${int(x.v)}</b></div>
       <div class="bar thin"><i style="width:${x.v / maxRank * 100}%;background:${x.cor};box-shadow:none"></i></div></div>`).join('')}</div>` : ''}
     <div class="card flush"><h3 class="imp-h">Meses</h3><div class="imp-scroll"><table>
@@ -355,6 +351,26 @@ function vHist() {
         <td class="r mono">${int(x.cor)}</td><td class="r mono">${int(x.pb)}</td><td class="r mono"><b>${brl(x.valor)}</b></td>
         <td class="r mono h-sm">${x.r.info.valorPago && C.dec4(x.r.info.valorPago) != null ? brl(C.centavos(C.dec4(x.r.info.valorPago))) : '—'}</td>
         <td><span class="badge ${x.r.status === 'FECHADO' ? 'pago' : 'pendente'}">${x.r.status === 'FECHADO' ? 'Fechado' : 'Aberto'}</span>${x.r.parcial && x.r.temDado ? ' <span class="badge proximo">parcial</span>' : ''}${(x.r.info.anexos || []).length ? ` <span class="clipn">${h.ic('clip')}${x.r.info.anexos.length}</span>` : ''}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+
+
+// ---------- apresentação em slides (tela cheia) ----------
+function apresentar() {
+  const d = D(), { dados, rot, imps, ult, rank, maxRank } = calcHist(d, '');
+  if (!dados.length) return h.toast('Sem dados para apresentar.');
+  const x = dados[dados.length - 1], a = dados.length > 1 ? dados[dados.length - 2] : null, r = x.r;
+  const dif = (v, p) => (p ? `${v >= p ? '▲' : '▼'} ${Math.abs(((v - p) / p) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% vs ${h.nomeMes(a.m).split(' ')[0]}` : '');
+  const kpi = (t, txt, s, c, f, n) => `<div class="ns-kpi" style="--c:${c}"><span>${t}</span><b data-cnt="${n}" data-f="${f}">${txt}</b><small>${s}</small></div>`;
+  const slides = [
+    { titulo: `Folha de ${h.nomeMes(x.m)} · paga em ${h.nomeMes(C.mesPagamento(x.m)).split(' ')[0]}`, html: () => `<div class="ns-kpis">${
+      kpi('Valor a pagar', brl(r.total), dif(r.total, a?.r.total), '#4ade80', 'brl', reais(r.total))}${kpi('Folhas coloridas', int(r.pagCor), `${dif(r.pagCor, a?.r.pagCor)} · ${brl(r.valorCor)}`, NEON_COR, 'int', r.pagCor)}${
+      kpi('Folhas P&B', int(r.pagPb), `${dif(r.pagPb, a?.r.pagPb)} · ${brl(r.valorPb)}`, NEON_PB, 'int', r.pagPb)}${kpi('Total de folhas', int(r.pagCor + r.pagPb), `${imps.length} impressoras monitoradas`, '#a78bfa', 'int', r.pagCor + r.pagPb)}</div>` },
+    { titulo: 'Valor da folha por mês', html: () => graficoValor('ap-valor', true, dados, rot, '') },
+    { titulo: 'Folhas impressas por mês', html: () => graficoPaginas('ap-pag', dados, rot, true) },
+    { titulo: 'Consumo por impressora', html: () => graficoImps('ap-imps', dados, rot, imps, true) },
+  ];
+  if (ult && rank.length) slides.push({ titulo: `Ranking · ${h.nomeMes(ult.m)}`, html: () => `<div class="ns-rank">${rank.map(q => `<div><span>${h.esc(C.rotulo(q.p))} · ${h.esc(C.nomeSetor(d, q.p.setorId))}</span><i><u style="width:${(q.v / maxRank) * 100}%;background:${q.cor};color:${q.cor}"></u></i><b>${int(q.v)}</b></div>`).join('')}</div>` });
+  nasaApresentar(slides, 'CENTRAL DE CONTROLE · IMPRESSORAS COPYGRAF');
 }
 
 function vResumo() {
@@ -401,7 +417,7 @@ function vComparar() {
     if (dif === 0) return '<small class="muted">igual ao mês anterior</small>';
     return `<small class="cmp-d ${dif > 0 ? 'sobe' : 'desce'}">${dif > 0 ? '▲' : '▼'} ${fmt(Math.abs(dif))}${pct != null ? ` (${Math.abs(pct).toLocaleString('pt-BR')}%)` : ''} vs ${mesCurto(todos[sel - 1][0])}</small>`;
   };
-  const pr = r.preco, recentes = todos.slice(-12), rot = recentes.map(x => mesCurto(x[0]));
+  const pr = r.preco, recentes = todos.slice(-12), rot = recentes.map(x => mesCurto(x[0])), dd = recentes.map(([m, x]) => ({ m, r: x, cor: x.pagCor, pb: x.pagPb }));
   const linhaTab = ([m, x], i) => { const a = i > 0 ? todos[i - 1][1] : null, dv = a ? val(x) - val(a) : null;
     return `<tr class="clicavel ${i === sel ? 'sel' : ''}" data-act="impCmpMes" data-mes="${m}"><td><strong>${h.nomeMes(m)}</strong>${x.parcial && x.status !== 'FECHADO' ? '<small>parcial</small>' : ''}</td>
       <td class="r mono">${int(x.pagCor)}</td><td class="r mono">${int(x.pagPb)}</td><td class="r mono"><b>${brl(val(x))}</b>${pago(x) != null || x.info.pago ? '<small> pago</small>' : ''}</td>
@@ -414,14 +430,9 @@ function vComparar() {
       <div><span><i class="c-pb"></i>Folhas preto e branco</span><b>${int(r.pagPb)}</b><em>${brl(r.valorPb)}${pr ? ` · ${precoTxt(pr.pb)} cada` : ''}</em>${seta(r.pagPb, ant?.pagPb ?? null, v => int(v) + ' fls')}</div>
       <div><span>Total de folhas</span><b>${int(r.pagCor + r.pagPb)}</b><em>${r.desconto ? `desconto ${brl(r.desconto)}` : 'sem desconto'}</em>${seta(r.pagCor + r.pagPb, ant ? ant.pagCor + ant.pagPb : null, v => int(v) + ' fls')}</div>
     </div></div>
-    <div class="cols">
-      <div class="card"><h3>Valor por mês (R$)</h3>${grafico('barras', rot, [
-        { nome: 'Colorida', cor: 'var(--c1)', vals: recentes.map(x => x[1].valorCor) }, { nome: 'Preto e branco', cor: 'var(--muted)', vals: recentes.map(x => x[1].valorPb) }],
-        v => brl(v), v => 'R$ ' + curto(Math.round(v / 100)))}</div>
-      <div class="card"><h3>Folhas por mês</h3>${grafico('barras', rot, [
-        { nome: 'Coloridas', cor: 'var(--c1)', vals: recentes.map(x => x[1].pagCor) }, { nome: 'Preto e branco', cor: 'var(--muted)', vals: recentes.map(x => x[1].pagPb) }],
-        v => int(v) + ' folhas')}</div>
-    </div>
+    <div class="no-print">${nasaPeriodo()}<button class="btn primary" style="margin-left:10px" data-act="impApresentar">${h.ic('agenda')}Apresentar em slides</button></div>
+    <div class="nasa-bloco">${graficoValor('c-valor', true, dd, rot)}</div>
+    <div class="nasa-bloco">${graficoPaginas('c-pag', dd, rot)}</div>
     <div class="card flush"><h3 class="imp-h">Comparar mês a mês <small class="muted" style="font-weight:500">· toque num mês para ver em cima</small></h3><div class="imp-scroll"><table>
       <thead><tr><th>Mês</th><th class="r">Coloridas</th><th class="r">P&amp;B</th><th class="r">Valor</th><th class="r h-sm">Diferença</th></tr></thead>
       <tbody>${todos.map((x, i) => [x, i]).reverse().map(([x, i]) => linhaTab(x, i)).join('')}</tbody></table></div></div>`;
@@ -598,6 +609,7 @@ export const impActs = {
     U().lanc = { data: ja ? ja.data : mes + '-06', tipo: 'FECHAMENTO', mes, vals: {} };
     h.render(); window.scrollTo(0, 0);
   },
+  impApresentar: apresentar,
   impCmpMes: el => { U().cmp = el.dataset.mes; h.render(); window.scrollTo(0, 0); },
   impSub: el => { if (souFuncionario() && !SUBS_FUNC.includes(el.dataset.s)) return; U().sub = el.dataset.s; h.ui.anim = true; h.render(); window.scrollTo(0, 0); },
   impIrLancar: el => irLancar(el.dataset.data, el.dataset.mes),
