@@ -8,15 +8,21 @@ export const TIPO_CURTO = { SEG: 'Seg', SEX: 'Sex', FECHAMENTO: 'Fechamento' };
 export const DIAS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 export const FORMATO = 'gestao360-impressoras-v1';
 
-export const novo = () => ({ setores: [], impressoras: [], precos: [], leituras: [], meses: {}, totais: [], log: [], dias: [1, 5], diaConf: 5 });
+export const novo = () => ({ setores: [], impressoras: [], precos: [], leituras: [], meses: {}, totais: [], log: [], dias: [1], diaConf: 6, feriados: [] });
 
 export function normalizar(imp) {
   const d = Object.assign(novo(), imp || {});
   for (const k of ['setores', 'impressoras', 'precos', 'leituras', 'totais', 'log']) if (!Array.isArray(d[k])) d[k] = [];
   if (!d.meses || typeof d.meses !== 'object') d.meses = {};
-  if (!Array.isArray(d.dias)) d.dias = [1, 5];
+  if (!Array.isArray(d.dias)) d.dias = [1];
+  if (!Array.isArray(d.feriados)) d.feriados = [];
   if (!(d.diaConf >= 1 && d.diaConf <= 28)) d.diaConf = 6;
   migrarFolha(d);
+  // leitura passa a ser só toda segunda-feira, e os avisos começam em 16/11/2026 (limpa os avisos de 09/11 e 13/11)
+  if (!d.semanaSegunda) {
+    if (d.impressoras.length || d.leituras.length) { d.dias = [1]; d.avisoDesde = '2026-11-16'; d.atualizado = Date.now(); }
+    d.semanaSegunda = true;
+  }
   return d;
 }
 
@@ -77,11 +83,12 @@ export const mesValido = s => /^\d{4}-(0[1-9]|1[0-2])$/.test(s || '');
 export const dataValida = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '') && !isNaN(dataDe(s)) && iso(dataDe(s)) === s;
 
 // Sugestão do tipo e do mês de referência a partir da data da leitura.
-export function sugerir(data) {
+export function sugerir(data, imp) {
   const d = dataDe(data), dia = d.getDay(), mes = data.slice(0, 7), d6 = d.getDate() <= 6;
   // até o dia 6 (fechamento e leitura da folha) vale a folha do próprio mês; depois, já conta para a folha que fecha no mês seguinte
   const folha = d6 ? mes : somaMes(mes, 1);
   if (d.getDate() === 6) return { tipo: 'FECHAMENTO', mes };   // dia 06: leitura de fechamento da folha, fechada com a leitura do dia 06
+  if (imp && dia !== 1 && dia !== 5 && ehDiaLeitura(imp, data)) return { tipo: 'SEG', mes: folha };   // segunda que caiu em feriado e passou para outro dia útil
   if (dia === 1) return { tipo: 'SEG', mes: folha };
   if (dia === 5) return { tipo: 'SEX', mes: folha };
   return { tipo: 'FECHAMENTO', mes: folha };
@@ -207,7 +214,41 @@ export function mesesComDados(imp, mesAtual) {
 // Situação das leituras num dia: quantas impressoras ativas já têm leitura com aquela data.
 export function situacaoDia(imp, data) {
   const at = ativas(imp), ids = new Set(imp.leituras.filter(l => l.data === data).map(l => l.imp));
-  return { total: at.length, feitas: at.filter(p => ids.has(p.id)).length, diaDeLeitura: imp.dias.includes(dataDe(data).getDay()) };
+  return { total: at.length, feitas: at.filter(p => ids.has(p.id)).length, diaDeLeitura: ehDiaLeitura(imp, data) };
+}
+
+// ---------- feriados: a leitura que cai em feriado passa para o próximo dia útil ----------
+function pascoa(ano) {   // algoritmo de Meeus/Jones/Butcher
+  const a = ano % 19, b = Math.floor(ano / 100), c = ano % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3),
+    h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451),
+    mes = Math.floor((h + l - 7 * m + 114) / 31), dia = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(ano, mes - 1, dia);
+}
+const FIXOS = { '01-01': 'Confraternização Universal', '04-21': 'Tiradentes', '05-01': 'Dia do Trabalho', '09-07': 'Independência', '10-12': 'N. Sra. Aparecida',
+  '11-02': 'Finados', '11-15': 'Proclamação da República', '11-20': 'Consciência Negra', '12-25': 'Natal' };
+const cacheFeriados = {};
+export function feriadosNacionais(ano) {
+  if (cacheFeriados[ano]) return cacheFeriados[ano];
+  const m = new Map(Object.entries(FIXOS).map(([md, n]) => [`${ano}-${md}`, n])), p = pascoa(ano);
+  const rel = (n, nome) => { const d = new Date(p); d.setDate(d.getDate() + n); m.set(iso(d), nome); };
+  rel(-48, 'Carnaval (segunda)'); rel(-47, 'Carnaval (terça)'); rel(-2, 'Sexta-feira Santa'); rel(60, 'Corpus Christi');
+  return (cacheFeriados[ano] = m);
+}
+export const nomeFeriado = (imp, dia) => feriadosNacionais(+dia.slice(0, 4)).get(dia) || (imp.feriados || []).find(f => f.data === dia)?.nome || null;
+export const ehFeriado = (imp, dia) => !!nomeFeriado(imp, dia);
+export function proximoUtil(imp, dia) {
+  let d = dia;
+  for (let i = 0; i < 10 && (dataDe(d).getDay() === 0 || dataDe(d).getDay() === 6 || ehFeriado(imp, d)); i++) d = somaDia(d, 1);
+  return d;
+}
+// Dia efetivo da leitura de cada dia configurado (segunda...) na semana de uma data: feriado passa para o próximo dia útil.
+export function diasDeLeituraDaSemana(imp, data) {
+  const segunda = somaDia(data, -((dataDe(data).getDay() + 6) % 7));
+  return imp.dias.map(wd => { const base = somaDia(segunda, (wd + 6) % 7); return { base, dia: proximoUtil(imp, base) }; });
+}
+export function ehDiaLeitura(imp, data) {
+  for (const off of [0, -7]) if (diasDeLeituraDaSemana(imp, somaDia(data, off)).some(x => x.dia === data)) return true;
+  return false;
 }
 
 // Quantas impressoras do mês já foram marcadas como conferidas (a marca vale só se o total não mudou).
@@ -232,11 +273,12 @@ export function avisos(imp, hoje) {
     const dia = somaDia(segunda, i);
     if (dia > hoje) break;
     const s = situacaoDia(imp, dia);
-    if (!s.diaDeLeitura || s.feitas >= s.total) continue;
+    if (!s.diaDeLeitura || s.feitas >= s.total || dia < (imp.avisoDesde || '0000-00-00')) continue;
     const nome = DIAS[dataDe(dia).getDay()].toLowerCase(), falta = s.total - s.feitas;
+    const feriado = !imp.dias.includes(dataDe(dia).getDay()) ? ' (a segunda foi feriado)' : '';
     out.push(dia === hoje
-      ? { tipo: 'hoje', data: dia, txt: `Hoje (${nome}) é dia de registrar o consumo das impressoras: ${falta === s.total ? 'nenhuma leitura lançada ainda' : `faltam ${falta} de ${s.total}`}.` }
-      : { tipo: 'falta', data: dia, txt: `Falta a leitura de ${nome} (${dia.slice(8)}/${dia.slice(5, 7)}): ${falta} de ${s.total} impressoras.` });
+      ? { tipo: 'hoje', data: dia, txt: `Hoje (${nome}${feriado ? ', pós-feriado' : ''}) é dia de registrar o consumo das impressoras: ${falta === s.total ? 'nenhuma leitura lançada ainda' : `faltam ${falta} de ${s.total}`}.` }
+      : { tipo: 'falta', data: dia, txt: `Falta a leitura de ${nome} (${dia.slice(8)}/${dia.slice(5, 7)})${feriado}: ${falta} de ${s.total} impressoras.` });
   }
   const ant = hoje.slice(0, 7);
   const semFech = at.filter(p => baseAnterior(imp, p, ant) && !imp.leituras.some(l => l.imp === p.id && l.mes === ant && l.tipo === 'FECHAMENTO')

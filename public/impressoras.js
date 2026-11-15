@@ -38,7 +38,7 @@ function baixarBlob(blob, nome) {
 // ---------- lançamento rápido ----------
 function lanc() {
   const u = U();
-  if (!u.lanc) { const data = h.hoje(), s = C.sugerir(data); u.lanc = { data, tipo: s.tipo, mes: s.mes, vals: {} }; }
+  if (!u.lanc) { const data = h.hoje(), s = C.sugerir(data, D()); u.lanc = { data, tipo: s.tipo, mes: s.mes, vals: {} }; }
   return u.lanc;
 }
 const noLugar = (pid, L) => D().leituras.find(l => l.imp === pid && (L.tipo === 'FECHAMENTO' ? l.tipo === 'FECHAMENTO' && l.mes === L.mes : l.tipo === L.tipo && l.data === L.data));
@@ -450,9 +450,13 @@ function vCadastro() {
         <button class="btn block" data-act="impNovoPreco">${h.ic('mais')}Novo preço</button></div>
       <div>
         <div class="card"><h3>Setores</h3><div class="pills">${d.setores.map(s => `<button class="pill ${s.ativo === false ? 'off' : ''}" data-act="impEditarSetor" data-id="${s.id}">${h.esc(s.nome)}</button>`).join('') || '<span class="muted">Nenhum setor.</span>'}</div></div>
+        <div class="card"><h3>Feriados extras</h3>
+          <p class="nota">Os feriados nacionais, o Carnaval e a Sexta-feira Santa já estão no sistema. Inclua aqui os da cidade ou da escola.</p>
+          ${(d.feriados || []).slice().sort((a, b) => a.data.localeCompare(b.data)).map(f => `<div class="file"><span>${h.fmtData(f.data)} · ${h.esc(f.nome)}</span><button class="xbtn sm" data-act="impDelFeriado" data-data="${f.data}" aria-label="Remover feriado">${h.ic('x')}</button></div>`).join('')}
+          <form data-form="impFeriado" class="cf-nfl" style="margin-top:10px">${h.campo('Data', '<input name="data" type="date" required>')}${h.campo('Nome', '<input name="nome" required placeholder="Ex.: Aniversário de Aracaju">')}<button class="btn" type="submit">Adicionar</button></form></div>
         <div class="card"><h3>Dias de registro do consumo</h3>
           <div class="pills">${[1, 2, 3, 4, 5, 6].map(n => `<button class="pill ${d.dias.includes(n) ? 'on' : ''}" data-act="impDia" data-d="${n}">${C.DIAS[n].slice(0, 3)}</button>`).join('')}</div>
-          <p class="nota" style="margin-top:10px">Nesses dias a Agenda e o Painel avisam que é dia de leitura.</p>
+          <p class="nota" style="margin-top:10px">Nesses dias a Agenda, o Painel e o WhatsApp avisam que é dia de leitura. Se cair em feriado, passa para o próximo dia útil.</p>
           <label class="imp-filtro" style="margin-top:12px">Conferir a folha do mês no dia ${sel('diaConf', Array.from({ length: 28 }, (_, i) => [i + 1, i + 1]), d.diaConf, 'data-change="impDiaConf"')}</label>
           <p class="nota" style="margin-top:6px">A folha fecha com a leitura do dia 06. Esse dia entra na Agenda e no aviso de WhatsApp até a folha ser conferida ou fechada.</p>
           <p class="nota" style="margin-top:6px">${state.config.zapMeu ? `Aviso pelo WhatsApp vai para <b>${h.esc(state.config.zapMeu)}</b>.` : 'Para receber o aviso no WhatsApp, cadastre "Meu WhatsApp" no sino de alertas (aba Painel).'}</p>
@@ -488,7 +492,7 @@ function linhasParaArquivo(linhas) {
     if (!l || l[cS] == null || String(l[cS]).trim() === '') return;
     const dt = data(l[cD]), t = norm(cT >= 0 ? l[cT] : ''), cont = num(l[cC]);
     if (!C.dataValida(dt) || cont == null) return ignoradas.push(`linha ${ih + k + 2}: data ou contador inválido`);
-    const sug = C.sugerir(dt), tipo = t.startsWith('fech') ? 'FECHAMENTO' : t.includes('seg') ? 'SEG' : t.includes('sex') ? 'SEX' : sug.tipo;
+    const sug = C.sugerir(dt, D()), tipo = t.startsWith('fech') ? 'FECHAMENTO' : t.includes('seg') ? 'SEG' : t.includes('sex') ? 'SEX' : sug.tipo;
     const m = cM >= 0 && l[cM] != null && String(l[cM]).trim() !== '' ? mes(l[cM]) : (tipo === sug.tipo ? sug.mes : dt.slice(0, 7));
     if (C.mesFechado(D(), m)) return ignoradas.push(`linha ${ih + k + 2}: ${h.nomeMes(m)} está fechado`);
     leituras.push({ serie: String(l[cS]).trim().split(/\s|\(/)[0], data: dt, mes: m, tipo, cont, obs: '', origem: 'importacao' });
@@ -502,7 +506,7 @@ function ics() {
   const carimbo = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
   const txt = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Gestao 360//Impressoras//PT-BR', 'BEGIN:VEVENT', `UID:leitura-impressoras-${uid()}@gestao360`, `DTSTAMP:${carimbo}`,
     `DTSTART:${dia.replace(/-/g, '')}T080000`, 'DURATION:PT30M', `RRULE:FREQ=WEEKLY;BYDAY=${dias.map(n => cod[n]).join(',')}`,
-    'SUMMARY:Registrar consumo das impressoras (COPYGRAF)', 'DESCRIPTION:Anotar o contador de cada impressora no Gestão 360 · Pagamentos · aba Impressoras.',
+    'SUMMARY:Registrar consumo das impressoras (COPYGRAF)', 'DESCRIPTION:Anotar o contador de cada impressora no Gestão 360 · Pagamentos · aba Impressoras. Se for feriado, o app passa a leitura para o próximo dia útil.',
     'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Dia de registrar o consumo das impressoras', 'TRIGGER:PT0M', 'END:VALARM', 'END:VEVENT',
     'BEGIN:VEVENT', `UID:conferencia-impressoras-${uid()}@gestao360`, `DTSTAMP:${carimbo}`, `DTSTART:${h.hoje().slice(0, 8).replace(/-/g, '')}${String(d.diaConf).padStart(2, '0')}T090000`, 'DURATION:PT30M',
     `RRULE:FREQ=MONTHLY;BYMONTHDAY=${d.diaConf}`, 'SUMMARY:Conferir as impressoras do mês (COPYGRAF)', 'DESCRIPTION:Conferir o fechamento do mês anterior e a NF no Gestão 360 · Pagamentos · aba Impressoras.',
@@ -578,13 +582,14 @@ function dLeitura(l) {
 // ---------- ações ----------
 const irLancar = (data, mes) => {
   const u = U(); u.sub = 'lancar';
-  if (data && C.dataValida(data)) { const s = C.sugerir(data); u.lanc = { data, tipo: s.tipo, mes: s.mes, vals: {} }; }
+  if (data && C.dataValida(data)) { const s = C.sugerir(data, D()); u.lanc = { data, tipo: s.tipo, mes: s.mes, vals: {} }; }
   else if (mes && C.mesValido(mes)) u.lanc = { data: h.hoje(), tipo: 'FECHAMENTO', mes, vals: {} };
   h.ui.view = 'impressoras'; h.ui.anim = true; h.render(); window.scrollTo(0, 0);
 };
 const anexoDoMes = aid => (D().meses[h.ui.mes]?.anexos || []).find(a => a.id === aid);
 
 export const impActs = {
+  impDelFeriado: el => { D().feriados = (D().feriados || []).filter(f => f.data !== el.dataset.data); save(); },
   impAtalhoHoje: () => { U().lanc = null; h.render(); },
   impAtalhoFech: el => {
     const mes = el.dataset.mes, d = D();
@@ -739,6 +744,12 @@ export const impForms = {
     const salvo = await salvarFuncionarios(lista);
     h.toast(`Acesso salvo: ${salvo.length} funcionário${salvo.length === 1 ? '' : 's'}`); dFunc(salvo);
   },
+  impFeriado(v) {
+    if (!C.dataValida(v.data)) throw new Error('data inválida.');
+    const d = D(); d.feriados ??= [];
+    if (!d.feriados.some(f => f.data === v.data)) d.feriados.push({ data: v.data, nome: v.nome.trim() });
+    save(); h.toast('Feriado incluído');
+  },
   impDesc(v) {
     const mes = h.ui.mes, valor = C.dec4(v.desconto.trim() || '0');
     if (valor == null) throw new Error('desconto inválido.');
@@ -757,7 +768,7 @@ export const impForms = {
 export const impChanges = {
   impLanc: t => {
     const L = lanc(), k = t.dataset.k;
-    if (k === 'data' && C.dataValida(t.value)) { const s = C.sugerir(t.value); Object.assign(L, { data: t.value, tipo: s.tipo, mes: s.mes }); }
+    if (k === 'data' && C.dataValida(t.value)) { const s = C.sugerir(t.value, D()); Object.assign(L, { data: t.value, tipo: s.tipo, mes: s.mes }); }
     else if (k === 'tipo') L.tipo = t.value;
     else if (k === 'mes' && C.mesValido(t.value)) L.mes = t.value;
     h.render();
@@ -803,11 +814,13 @@ export function agendaDia(data) {
   const d = D(), hoje = h.hoje(), itens = [];
   let feitas = 0, total = 0;
   if (C.ativas(d).length) {
-    const s = C.situacaoDia(d, data);
-    if ((s.diaDeLeitura || s.feitas) && (s.feitas || data >= C.somaDia(hoje, -14))) {
+    const s = C.situacaoDia(d, data), desde = d.avisoDesde || '0000-00-00', desl = s.diaDeLeitura && !d.dias.includes(C.dataDe(data).getDay());
+    if ((s.diaDeLeitura && data >= desde || s.feitas) && (s.feitas || data >= C.somaDia(hoje, -14))) {
       const st = s.feitas >= s.total ? 'pago' : data < hoje ? (s.feitas ? 'proximo' : 'atrasado') : data === hoje ? 'hoje' : 'pendente';
-      itens.push({ tipo: 'leitura', st, rotulo: 'Leitura impressoras' }); feitas = s.feitas; total = s.total;
+      itens.push({ tipo: 'leitura', st, rotulo: desl ? 'Leitura (pós-feriado)' : 'Leitura impressoras', desl }); feitas = s.feitas; total = s.total;
     }
+    const fer = C.nomeFeriado(d, data);   // feriado num dia de leitura: avisa que a leitura passa para o próximo dia útil
+    if (fer && d.dias.includes(C.dataDe(data).getDay()) && data >= desde) itens.push({ tipo: 'feriado', st: 'proximo', rotulo: 'Feriado: leitura passa', fer, para: C.proximoUtil(d, data) });
   }
   if (Number(data.slice(8)) === d.diaConf) {   // dia de conferir o mês anterior
     const cf = C.conferenciaDoMes(d, data.slice(0, 7));
@@ -819,8 +832,10 @@ export function agendaPainel(data) {
   const a = agendaDia(data);
   if (!a) return '';
   const cls = st => st === 'atrasado' ? 'falta' : st === 'hoje' ? 'hoje' : '';
-  return a.itens.map(i => i.tipo === 'leitura'
-    ? `<div class="imp-aviso ${cls(i.st)}"><span><b>Leitura das impressoras</b><br>${a.feitas} de ${a.total} lançadas${i.st === 'pendente' ? ' · dia de registro do consumo' : ''}</span>
+  return a.itens.map(i => i.tipo === 'feriado'
+    ? `<div class="imp-aviso hoje"><span><b>${h.esc(i.fer)}</b><br>A leitura das impressoras passa para ${C.DIAS[C.dataDe(i.para).getDay()].toLowerCase()}, ${h.fmtData(i.para).slice(0, 5)}.</span></div>`
+    : i.tipo === 'leitura'
+    ? `<div class="imp-aviso ${cls(i.st)}"><span><b>Leitura das impressoras${i.desl ? ' (pós-feriado)' : ''}</b><br>${a.feitas} de ${a.total} lançadas${i.st === 'pendente' ? ' · dia de registro do consumo' : ''}</span>
       <button class="btn sm ${i.st === 'pago' ? '' : 'primary'}" data-act="impIrLancar" data-data="${data}">${i.st === 'pago' ? 'Ver' : 'Lançar'}</button></div>`
     : `<div class="imp-aviso ${cls(i.st)}"><span><b>Conferir as impressoras de ${h.nomeMes(i.cf.mes)}</b><br>${i.cf.feitas} de ${i.cf.total} conferidas${i.cf.pronta ? ' · concluído' : ''}</span>
       <button class="btn sm ${i.st === 'pago' ? '' : 'primary'}" data-act="impIrConferir" data-mes="${i.cf.mes}">${i.st === 'pago' ? 'Ver' : 'Conferir'}</button></div>`).join('');

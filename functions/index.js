@@ -156,17 +156,41 @@ const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'j
 const diaSemana = iso => new Date(iso + 'T00:00:00Z').getUTCDay();
 const somaDia = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
 
-/** Mesma ideia do app: leituras da semana que faltam e conferência do mês anterior. Devolve frases curtas. */
+const FIXOS = { '01-01': 1, '04-21': 1, '05-01': 1, '09-07': 1, '10-12': 1, '11-02': 1, '11-15': 1, '11-20': 1, '12-25': 1 };
+function feriadosNacionais(ano) {   // mesmos feriados do app (nacionais, Carnaval, Sexta-feira Santa, Corpus Christi)
+  const s = new Set(Object.keys(FIXOS).map(md => `${ano}-${md}`));
+  const a = ano % 19, b = Math.floor(ano / 100), c = ano % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3),
+    h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451),
+    mes = Math.floor((h + l - 7 * m + 114) / 31), dia = ((h + l - 7 * m + 114) % 31) + 1, pascoa = Date.UTC(ano, mes - 1, dia);
+  for (const n of [-48, -47, -2, 60]) s.add(new Date(pascoa + n * 864e5).toISOString().slice(0, 10));
+  return s;
+}
+const ehFeriado = (imp, dia) => feriadosNacionais(+dia.slice(0, 4)).has(dia) || (imp.feriados || []).some(f => f.data === dia);
+function proximoUtil(imp, dia) {
+  let d = dia;
+  for (let i = 0; i < 10 && ([0, 6].includes(diaSemana(d)) || ehFeriado(imp, d)); i++) d = somaDia(d, 1);
+  return d;
+}
+function ehDiaLeitura(imp, data) {
+  const dias = imp.dias || [1];
+  for (const off of [0, -7]) {
+    const ref = somaDia(data, off), segunda = somaDia(ref, -((diaSemana(ref) + 6) % 7));
+    if (dias.some(wd => proximoUtil(imp, somaDia(segunda, (wd + 6) % 7)) === data)) return true;
+  }
+  return false;
+}
+
+/** Mesma ideia do app: leituras da semana que faltam (a partir de avisoDesde; feriado passa para o próximo dia útil) e conferência da folha. */
 function avisosImpressoras(imp, hoje) {
   const out = [];
   const ativas = (imp.impressoras || []).filter(p => p.status === 'ATIVA');
-  const leituras = imp.leituras || [], diasLeitura = imp.dias || [1, 5];
+  const leituras = imp.leituras || [], desde = imp.avisoDesde || '0000-00-00';
   if (ativas.length) {
     const segunda = somaDia(hoje, -((diaSemana(hoje) + 6) % 7));
     for (let i = 0; i < 7; i++) {
       const dia = somaDia(segunda, i);
       if (dia > hoje) break;
-      if (!diasLeitura.includes(diaSemana(dia))) continue;
+      if (dia < desde || !ehDiaLeitura(imp, dia)) continue;
       const feitas = new Set(leituras.filter(l => l.data === dia).map(l => l.imp));
       const falta = ativas.filter(p => !feitas.has(p.id)).length;
       if (!falta) continue;
