@@ -178,7 +178,7 @@ function avisosImpressoras(imp, hoje) {
   }
   const diaConf = imp.diaConf >= 1 && imp.diaConf <= 28 ? imp.diaConf : 6;
   if (Number(hoje.slice(8)) >= diaConf) {
-    const mes = hoje.slice(0, 7), info = (imp.meses || {})[mes] || {};   // folha do mês, fechada dia 05
+    const mes = hoje.slice(0, 7), info = (imp.meses || {})[mes] || {};   // folha do mês, fechada com a leitura do dia 06
     const temDado = leituras.some(l => l.mes === mes) || (imp.totais || []).some(t => t.mes === mes);
     const conferidas = Object.keys(info.conf || {}).length;
     if (temDado && info.status !== 'FECHADO' && conferidas < ativas.length) {

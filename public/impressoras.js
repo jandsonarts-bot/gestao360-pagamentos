@@ -66,7 +66,7 @@ function vLancar() {
         <button class="pill ${!fechou && L.tipo !== 'FECHAMENTO' ? 'on' : ''}" data-act="impAtalhoHoje">Leitura de hoje (segunda ou sexta)</button>
         <button class="pill ${fechou ? 'on' : ''}" data-act="impAtalhoFech" data-mes="${mesFolha}">Fechamento da folha de ${h.nomeMes(mesFolha)} (lido em ${h.fmtData(mesFolha + '-06').slice(0, 5)})</button>
       </div>
-      <p class="nota">A folha fecha todo dia 05 e leva o nome do mês em que fecha. A leitura de fechamento é do dia 06 e o pagamento é no mês seguinte: a folha de ${h.nomeMes(mesFolha)} é paga em ${h.nomeMes(C.mesPagamento(mesFolha))}.
+      <p class="nota">A folha fecha com a leitura do dia 06 e leva o nome do mês em que fecha. O pagamento é no mês seguinte: a folha de ${h.nomeMes(mesFolha)} é paga em ${h.nomeMes(C.mesPagamento(mesFolha))}.
         Os números que já estão nos campos são os que estão salvos: é só trocar pelo contador do relatório e salvar.</p></div>
     <div class="card">
       <div class="g3">
@@ -454,7 +454,7 @@ function vCadastro() {
           <div class="pills">${[1, 2, 3, 4, 5, 6].map(n => `<button class="pill ${d.dias.includes(n) ? 'on' : ''}" data-act="impDia" data-d="${n}">${C.DIAS[n].slice(0, 3)}</button>`).join('')}</div>
           <p class="nota" style="margin-top:10px">Nesses dias a Agenda e o Painel avisam que é dia de leitura.</p>
           <label class="imp-filtro" style="margin-top:12px">Conferir a folha do mês no dia ${sel('diaConf', Array.from({ length: 28 }, (_, i) => [i + 1, i + 1]), d.diaConf, 'data-change="impDiaConf"')}</label>
-          <p class="nota" style="margin-top:6px">A folha fecha dia 05 e é lida dia 06. Esse dia entra na Agenda e no aviso de WhatsApp até a folha ser conferida ou fechada.</p>
+          <p class="nota" style="margin-top:6px">A folha fecha com a leitura do dia 06. Esse dia entra na Agenda e no aviso de WhatsApp até a folha ser conferida ou fechada.</p>
           <p class="nota" style="margin-top:6px">${state.config.zapMeu ? `Aviso pelo WhatsApp vai para <b>${h.esc(state.config.zapMeu)}</b>.` : 'Para receber o aviso no WhatsApp, cadastre "Meu WhatsApp" no sino de alertas (aba Painel).'}</p>
           <button class="btn block" data-act="impIcs">${h.ic('agenda')}Lembrete para a agenda do celular (.ics)</button></div>
       </div>

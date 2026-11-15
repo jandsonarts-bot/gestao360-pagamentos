@@ -20,7 +20,7 @@ export function normalizar(imp) {
   return d;
 }
 
-// Regra da folha (v2): a folha fecha todo dia 05 e tem o nome do mês em que fecha; a leitura de fechamento
+// Regra da folha (v2): a folha fecha com a leitura do dia 06 e tem o nome do mês em que fecha; a leitura de fechamento
 // (lida dia 06) pertence a ela e o pagamento é no mês seguinte. Ex.: leitura de 06/11 = folha de Novembro, paga em dezembro.
 // Dados antigos (v1) usavam o nome do mês do consumo (a leitura de 06/11 era "Outubro"): andam um mês.
 const NOMES_MES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -81,7 +81,7 @@ export function sugerir(data) {
   const d = dataDe(data), dia = d.getDay(), mes = data.slice(0, 7), d6 = d.getDate() <= 6;
   // até o dia 6 (fechamento e leitura da folha) vale a folha do próprio mês; depois, já conta para a folha que fecha no mês seguinte
   const folha = d6 ? mes : somaMes(mes, 1);
-  if (d.getDate() === 6) return { tipo: 'FECHAMENTO', mes };   // dia 06: leitura de fechamento da folha que fechou dia 05
+  if (d.getDate() === 6) return { tipo: 'FECHAMENTO', mes };   // dia 06: leitura de fechamento da folha, fechada com a leitura do dia 06
   if (dia === 1) return { tipo: 'SEG', mes: folha };
   if (dia === 5) return { tipo: 'SEX', mes: folha };
   return { tipo: 'FECHAMENTO', mes: folha };
@@ -241,8 +241,8 @@ export function avisos(imp, hoje) {
   const ant = hoje.slice(0, 7);
   const semFech = at.filter(p => baseAnterior(imp, p, ant) && !imp.leituras.some(l => l.imp === p.id && l.mes === ant && l.tipo === 'FECHAMENTO')
     && !imp.totais.some(t => t.imp === p.id && t.mes === ant)).length;
-  if (semFech && Number(hoje.slice(8)) >= imp.diaConf) out.push({ tipo: 'fechamento', mes: ant, txt: `Falta a leitura de fechamento da folha de ${MESES_PT[+ant.slice(5) - 1]} (fecha dia 05) para ${semFech} impressora${semFech > 1 ? 's' : ''}.` });
-  const cf = Number(hoje.slice(8)) >= imp.diaConf ? conferenciaDoMes(imp, hoje.slice(0, 7)) : null;   // folha do mês que fechou dia 05
+  if (semFech && Number(hoje.slice(8)) >= imp.diaConf) out.push({ tipo: 'fechamento', mes: ant, txt: `Falta a leitura de fechamento da folha de ${MESES_PT[+ant.slice(5) - 1]} (fecha com a leitura do dia 06) para ${semFech} impressora${semFech > 1 ? 's' : ''}.` });
+  const cf = Number(hoje.slice(8)) >= imp.diaConf ? conferenciaDoMes(imp, hoje.slice(0, 7)) : null;   // folha do mês, fechada com a leitura do dia 06
   if (cf && !cf.pronta) out.push({ tipo: 'conferir', mes: cf.mes, txt: `Dia de conferir a folha de ${MESES_PT[+cf.mes.slice(5) - 1]}/${cf.mes.slice(0, 4)} (paga em ${MESES_PT[+mesPagamento(cf.mes).slice(5) - 1]}): ${cf.feitas} de ${cf.total} conferidas.` });
   return out;
 }
