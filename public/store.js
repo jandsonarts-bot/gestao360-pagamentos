@@ -1,5 +1,6 @@
 // Camada de dados: localStorage sempre; Firestore + Storage quando o Firebase está configurado.
 import { firebaseConfig, usarStorage } from './firebase-config.js';
+import { normalizar as normalizarImp } from './imp-calc.js';
 
 const LS = 'gestao360:v1';
 const FB = 'https://www.gstatic.com/firebasejs/10.14.1/';
@@ -19,6 +20,7 @@ function seed() {
     inicio: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
     config: { diasAlerta: 3, zapMeu: '', zapFin: '' },
     empresas: [], pagamentos: {}, pedidos: [], docs: [],
+    imp: normalizarImp(),
   };
 }
 
@@ -28,6 +30,7 @@ function normalizar(s) {
   s.pedidos ??= [];
   s.docs ??= [];
   s.empresas ??= [];
+  s.imp = normalizarImp(s.imp); // controle de impressoras locadas (aba Impressoras)
   return s;
 }
 

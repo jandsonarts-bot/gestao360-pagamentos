@@ -1,4 +1,5 @@
 import { state, save, onChange, cloud, initCloud, login, logout, addAnexo, urlAnexo, delAnexo, arquivoAnexo, avisoZapAgora, restaurar, salvarEquipe, uid } from './store.js';
+import { initImp, vImpressoras, impActs, impForms, impChanges, impInputs, agendaDia, agendaPainel, avisoPainel, notificarImp } from './impressoras.js';
 
 // ---------- utilidades ----------
 const app = document.getElementById('app');
@@ -34,6 +35,7 @@ const I = {
   paleta: '<path d="M12 3a9 9 0 100 18c1.2 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.2A3.8 3.8 0 0021 10.6C21 6.4 17 3 12 3z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="10" cy="7.5" r="1"/><circle cx="15" cy="7.5" r="1"/>',
   baixar: '<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',
   nuvem: '<path d="M7 18a4.5 4.5 0 01-.6-9A6 6 0 0118 10.5a3.8 3.8 0 01-.5 7.5z"/>',
+  impressoras: '<path d="M7 8V3h10v5M7 17H5a2 2 0 01-2-2v-4a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2h-2"/><rect x="7" y="14" width="10" height="7" rx="1"/>',
 };
 const ic = n => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
 
@@ -215,6 +217,7 @@ function vPainel() {
   return `
   ${instalar ? `<div class="card inst"><img class="logo" src="icon-192.png" alt=""><div><b>Instale o Gestão 360 neste aparelho</b><span>Abre em janela própria, com ícone na área de trabalho.</span></div>
     <button class="btn primary" data-act="instalar">${ic('baixar')}Instalar</button></div>` : ''}
+  ${avisoPainel()}
   <div class="kpis">
     <button class="kpi" data-act="kpi" data-f="todos"><span>Previsto no mês</span><b>${brl(total)}</b><small>${its.length} pagamentos</small></button>
     <button class="kpi ok" data-act="kpi" data-f="pagos"><span>Pago</span><b>${brl(pago)}</b><small>${its.filter(i => i.pago).length} quitados</small></button>
@@ -246,11 +249,11 @@ function vAgenda() {
   }
   let cel = '<i></i>'.repeat(ini);
   for (let d = 1; d <= n; d++) {
-    const data = `${ui.mes}-${pad(d)}`, l = porDia[d] || [];
+    const data = `${ui.mes}-${pad(d)}`, l = porDia[d] || [], imp = agendaDia(data); // imp: dia de leitura das impressoras
     cel += `<button class="day ${data === h ? 'today' : ''} ${data === ui.dia ? 'sel' : ''}" data-act="dia" data-dia="${data}">
       <span class="num">${d}</span>
-      <span class="chips">${l.slice(0, 3).map(i => `<span class="chip ${status(i)}">${esc(i.titulo)}</span>`).join('')}${l.length > 3 ? `<span class="more">+${l.length - 3}</span>` : ''}</span>
-      <span class="dots">${l.slice(0, 5).map(i => `<i class="${status(i)}"></i>`).join('')}</span>
+      <span class="chips">${imp ? `<span class="chip ${imp.st}">Leitura impressoras</span>` : ''}${l.slice(0, 3).map(i => `<span class="chip ${status(i)}">${esc(i.titulo)}</span>`).join('')}${l.length > 3 ? `<span class="more">+${l.length - 3}</span>` : ''}</span>
+      <span class="dots">${imp ? `<i class="${imp.st}"></i>` : ''}${l.slice(0, 5).map(i => `<i class="${status(i)}"></i>`).join('')}</span>
     </button>`;
   }
   const sel = porDia[+ui.dia.slice(8)] || [];
@@ -259,6 +262,7 @@ function vAgenda() {
       <div class="grid">${cel}</div>
       <div class="legend"><span><i class="pago"></i>Pago</span><span><i class="pendente"></i>A vencer</span><span><i class="enviado"></i>No financeiro</span><span><i class="proximo"></i>Vence em breve</span><span><i class="atrasado"></i>Atrasado</span></div></div>
     <div class="card"><h3>${fmtData(ui.dia)} <em>${brl(sel.reduce((s, i) => s + +i.valor, 0))}</em></h3>
+      ${agendaPainel(ui.dia)}
       ${sel.length ? sel.map(linha).join('') : vazio('Dia livre', 'Nenhum pagamento agendado.')}
       <button class="btn block" data-act="novoPedido" data-venc="${ui.dia}">${ic('mais')}Agendar pagamento neste dia</button></div>
   </div>`;
@@ -341,6 +345,7 @@ function vDocs() {
 const VIEWS = {
   painel: ['Painel', vPainel], agenda: ['Agenda', vAgenda], mensais: ['Mensais', vMensais],
   pedidos: ['Pedidos', vPedidos], documentos: ['Documentos', vDocs, 'Docs'], prestadores: ['Prestadores', vPrestadores, 'Prestad.'],
+  impressoras: ['Impressoras', vImpressoras, 'Impress.'],
 };
 
 function render() {
@@ -464,7 +469,7 @@ function dEmpresa(e, cat) {
 }
 
 function dPedido(d, pre = {}) {
-  const n = !d; d ??= { fornecedor: pre.forn || '', venc: pre.venc || hoje(), forma: 'PIX' };
+  const n = !d; d ??= { fornecedor: pre.forn || '', venc: pre.venc || hoje(), forma: 'PIX', valor: pre.valor, descricao: pre.descricao };
   abrir(`${cab(n ? 'Novo pagamento único' : 'Editar pagamento', 'Entra na agenda e nos alertas pelo vencimento.')}
     <form data-form="pedido" data-id="${d.id || ''}"><div class="body">
       ${campo('Fornecedor', `<input name="fornecedor" required list="forn" value="${esc(d.fornecedor)}" autocomplete="off">
@@ -737,6 +742,10 @@ const forms = {
   },
 };
 
+// aba Impressoras: ações e formulários ficam em impressoras.js
+Object.assign(acts, impActs);
+Object.assign(forms, impForms);
+
 document.addEventListener('click', ev => {
   if (ev.target === dlg) return fechar();
   const el = ev.target.closest('[data-act]');
@@ -752,6 +761,7 @@ document.addEventListener('submit', async ev => {
   finally { b.disabled = false; }
 });
 document.addEventListener('input', ev => {
+  impInputs[ev.target.dataset.input]?.(ev.target);
   if (ev.target.dataset.input === 'busca') { ui.busca = ev.target.value; render(); }
   if (ev.target.dataset.input === 'corLivre') {
     tema = { ...tema, cor: null, custom: ev.target.value }; aplicarTema();
@@ -761,6 +771,7 @@ document.addEventListener('input', ev => {
 });
 document.addEventListener('change', async ev => {
   const t = ev.target;
+  if (impChanges[t.dataset.change]) return impChanges[t.dataset.change](t);
   if (t.dataset.change === 'zapMeu' || t.dataset.change === 'zapFin') { state.config[t.dataset.change] = t.value.trim(); save(); toast('Número salvo'); }
   if (t.dataset.change === 'importar' && t.files[0]) {
     try {
@@ -813,7 +824,7 @@ document.addEventListener('keydown', ev => {
 });
 // celular: deslizar para os lados troca o mês
 let tx = null, ty = 0;
-document.addEventListener('touchstart', ev => { tx = dlg.open ? null : ev.touches[0].clientX; ty = ev.touches[0].clientY; }, { passive: true });
+document.addEventListener('touchstart', ev => { tx = dlg.open || ev.target.closest?.('.imp-scroll') ? null : ev.touches[0].clientX; ty = ev.touches[0].clientY; }, { passive: true });
 document.addEventListener('touchend', ev => {
   if (tx === null) return;
   const dx = ev.changedTouches[0].clientX - tx, dy = ev.changedTouches[0].clientY - ty;
@@ -826,9 +837,10 @@ window.addEventListener('beforeinstallprompt', ev => { ev.preventDefault(); inst
 window.addEventListener('appinstalled', () => { instalar = null; render(); toast('App instalado'); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
+initImp({ esc, ic, abrir, fechar, cab, campo, toast, render, ui, subir, dVer, baixar, dPedido, hoje, fmtData, nomeMes, MESES, vazio });
 aplicarTema();
 onChange(render);
 render();
 initCloud();
-notificar();
-setInterval(() => { render(); notificar(); }, 30 * 60 * 1000);
+notificar(); notificarImp();
+setInterval(() => { render(); notificar(); notificarImp(); }, 30 * 60 * 1000);
