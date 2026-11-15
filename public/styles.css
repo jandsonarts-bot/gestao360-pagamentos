@@ -598,3 +598,6 @@ tr.sel td { background: var(--accent-soft); }
 
 .lc-atalhos b { display: block; margin-bottom: 8px; }
 .lc-atalhos .pill { height: auto; min-height: 34px; padding: 6px 14px; white-space: normal; text-align: left; }
+
+.g-prox { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-top: 10px; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--c2) 14%, transparent); font-size: 13px; }
+.g-prox > b { font-size: 17px; font-variant-numeric: tabular-nums; } .g-prox small { color: var(--muted); }

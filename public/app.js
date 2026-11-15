@@ -208,12 +208,14 @@ const vazio = (t, s = '') => `<div class="empty"><b>${t}</b><span>${s}</span></d
 // ---------- gráfico interativo dos últimos 3 meses (Painel) ----------
 const G_MODOS = { total: 'Pago x A pagar', tipo: 'Por tipo', imp: 'Impressoras' };
 let gDados = [];
+const impNf = r => (r.info.valorPago && IC.dec4(r.info.valorPago) != null ? IC.centavos(IC.dec4(r.info.valorPago)) : null);
 function dadosMes(m) {
   const its = itensDoMes(m), soma = f => its.filter(f).reduce((s, i) => s + (+i.valor || 0), 0);
   const pago = soma(i => i.pago), total = soma(() => true);
   const imp = IC.resumoMes(state.imp, addMes(m, -1));   // folha do mês anterior, paga neste mês
   return { m, total, pago, aberto: total - pago, n: its.length, FIXO: soma(i => i.tipo === 'FIXO'), VARIAVEL: soma(i => i.tipo === 'VARIÁVEL'), PEDIDO: soma(i => i.tipo === 'PEDIDO'),
-    imp: imp.temDado ? imp.total / 100 : 0, impPag: imp.pagCor + imp.pagPb, impParcial: imp.temDado && imp.parcial };
+    imp: !imp.temDado ? 0 : impNf(imp) != null ? impNf(imp) / 100 : imp.total / 100, impNf: impNf(imp) != null, impFolha: addMes(m, -1),
+    impPag: imp.pagCor + imp.pagPb, impCor: imp.pagCor, impPb: imp.pagPb, impParcial: imp.temDado && imp.parcial };
 }
 function grafico3() {
   const modo = (ui.g ??= { modo: 'total' }).modo;
@@ -246,13 +248,19 @@ function grafico3() {
     <svg class="grafico" viewBox="0 0 ${W} ${H}" role="img" aria-label="Valores mensais dos últimos 3 meses">${g}</svg>
     <div class="legend">${SERIES.map(([, t, c]) => `<span><i style="background:${c}"></i>${t}</span>`).join('')}</div>
     <div class="g-tip" id="gtip" aria-live="polite">${tipoGrafico(gDados.find(d => d.m === ui.mes), modo)}</div>
+    ${modo === 'imp' ? proximoImp() : ''}
     <p class="nota">Passe o mouse ou toque numa barra para ver os valores; clique para abrir aquele mês.</p></div>`;
+}
+function proximoImp() {
+  const f = ui.mes, r = IC.resumoMes(state.imp, f), nf = impNf(r);
+  if (!r.temDado) return '';
+  return `<div class="g-prox"><span>Próximo pagamento da COPYGRAF · <b>${MESES[+addMes(f, 1).slice(5) - 1]}</b></span><b>${brl((nf ?? r.total) / 100)}</b><small>folha de ${MESES[+f.slice(5) - 1]}, leitura de 06/${f.slice(5)}${r.parcial && r.status !== 'FECHADO' ? ' · ainda parcial' : ''}</small></div>`;
 }
 function tipoGrafico(d, modo) {
   if (!d) return '';
   const L = (t, v) => `<span><em>${t}</em><b>${brl(v)}</b></span>`;
   const corpo = modo === 'tipo' ? L('Fixos', d.FIXO) + L('Variáveis', d.VARIAVEL) + L('Pedidos', d.PEDIDO) + L('Total', d.total)
-    : modo === 'imp' ? L('Impressoras', d.imp) + `<span><em>Páginas</em><b>${d.impPag.toLocaleString('pt-BR')}</b></span>` + (d.impParcial ? '<span><em>Situação</em><b>parcial</b></span>' : '')
+    : modo === 'imp' ? L(`COPYGRAF · folha de ${nomeMes(d.impFolha)}`, d.imp) + `<span><em>Coloridas</em><b>${d.impCor.toLocaleString('pt-BR')}</b></span><span><em>P&B</em><b>${d.impPb.toLocaleString('pt-BR')}</b></span><span><em>Valor</em><b>${d.impNf ? 'da NF paga' : d.impParcial ? 'calculado (parcial)' : 'calculado'}</b></span>`
     : L('Previsto', d.total) + L('Pago', d.pago) + L('A pagar', d.aberto) + `<span><em>Pagamentos</em><b>${d.n}</b></span>`;
   return `<strong>${nomeMes(d.m)}</strong>${corpo}`;
 }
