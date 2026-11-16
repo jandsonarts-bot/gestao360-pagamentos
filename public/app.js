@@ -1,6 +1,6 @@
 import { souFuncionario, state, save, onChange, cloud, initCloud, login, logout, addAnexo, urlAnexo, delAnexo, arquivoAnexo, avisoZapAgora, restaurar, salvarEquipe, uid } from './store.js';
 import * as IC from './imp-calc.js';
-import { initImp, vImpressoras, impActs, impForms, impChanges, impInputs, agendaDia, agendaPainel, avisoPainel, notificarImp } from './impressoras.js';
+import { initImp, vImpressoras, impActs, impForms, impChanges, impInputs, agendaDia, agendaPainel, avisoPainel, notificarImp, aberturaAuto } from './impressoras.js';
 
 // ---------- utilidades ----------
 const app = document.getElementById('app');
@@ -66,11 +66,14 @@ function aplicarTema() {
 }
 function contar(el) {
   const txt = el.textContent, n = parseFloat(txt.replace(/[^\d,]/g, '').replace(',', '.'));
+  const moeda = txt.includes('R$');
+  if (!moeda && !/^[\d.]+$/.test(txt.trim())) return;   // só anima dinheiro ou número inteiro
   if (!isFinite(n) || !n || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const t0 = performance.now();
   const passo = t => {
     const p = Math.min(1, (t - t0) / 650);
-    el.textContent = p < 1 ? brl(n * (1 - Math.pow(1 - p, 3))) : txt;
+    const v = n * (1 - Math.pow(1 - p, 3));
+    el.textContent = p < 1 ? (moeda ? brl(v) : Math.round(v).toLocaleString('pt-BR')) : txt;
     if (p < 1 && el.isConnected) requestAnimationFrame(passo);
   };
   requestAnimationFrame(passo);
@@ -989,7 +992,9 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 initImp({ zapUrl, esc, ic, abrir, fechar, cab, campo, toast, render, ui, subir, dVer, baixar, dPedido, hoje, fmtData, nomeMes, MESES, vazio });
 aplicarTema();
 onChange(render);
+onChange(() => setTimeout(aberturaAuto, 600));
 render();
+setTimeout(aberturaAuto, 1200);
 initCloud();
 notificar(); notificarImp();
 setInterval(() => { render(); notificar(); notificarImp(); }, 30 * 60 * 1000);

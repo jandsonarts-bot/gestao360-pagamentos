@@ -248,7 +248,7 @@ export function nasaLigar(fn) {
 
 // ---------- modo apresentação (slides em tela cheia) ----------
 /** slides: [{ titulo, html: () => string }]. Setas, espaço (automático) e Esc funcionam. */
-export function nasaApresentar(slides, missao = 'CENTRAL DE CONTROLE') {
+export function nasaApresentar(slides, missao = 'CENTRAL DE CONTROLE', opts = {}) {
   if (document.querySelector('.nasa-show')) return;
   let i = 0, auto = false, timer = null;
   const ov = document.createElement('div');
@@ -293,5 +293,5 @@ export function nasaApresentar(slides, missao = 'CENTRAL DE CONTROLE') {
   redesenhar = pintar;
   const hora = () => { const e = ov.querySelector('.ns-rel'); if (e) e.textContent = ' · ' + new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' }); };
   hora(); const relogio = setInterval(hora, 1000);
-  pintar();
+  if (opts.auto) alternar(); else pintar();   // auto: já começa passando os slides, como um vídeo
 }

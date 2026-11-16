@@ -604,3 +604,8 @@ tr.sel td { background: var(--accent-soft); }
 
 .nasa-bloco { margin-bottom: 16px; } .nasa-bloco .nasa { margin-bottom: 0; } .nasa-cols { gap: 16px; } .nasa-cols .nasa { margin-bottom: 0; }
 @media print { .nasa, .nasa-show { display: none !important; } }
+
+/* nível de gasto no valor do mês */
+.kpi .nivel { font-weight: 800; }
+.kpi.bad .nivel { color: var(--bad); } .kpi.ok .nivel { color: var(--ok); }
+.ab-tools { margin-bottom: 12px; }

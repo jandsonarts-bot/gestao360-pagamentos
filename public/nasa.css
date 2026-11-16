@@ -130,3 +130,13 @@ body.nasa-aberto { overflow: hidden; }
 .nasa-tip .tr.ex { border-top: 1px dashed rgba(251, 191, 36, .35); margin-top: 3px; padding-top: 4px; } .nasa-tip .tr.ex + .tr.ex { border-top: 0; margin-top: 0; padding-top: 2.5px; }
 .nasa-leitura .ex b { color: #fbbf24; }
 @media (prefers-reduced-motion: reduce) { .nasa *, .nasa-show * { animation: none !important; } .nasa .nl { stroke-dashoffset: 0; } .nasa .np { opacity: 1; } }
+
+/* ---- abertura: os dois últimos meses lado a lado ---- */
+.ab-duelo { margin-top: 18px; gap: 14px; }
+.ab-duelo div { font-size: 15px; grid-template-columns: minmax(90px, 160px) 1fr minmax(110px, 170px); }
+.ab-duelo span { font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #fff; }
+.ab-duelo i { height: 26px; border-radius: 8px; } .ab-duelo i u { border-radius: 8px; box-shadow: 0 0 18px currentColor; }
+.ab-duelo b { font-size: clamp(15px, 2.2vw, 22px); }
+.ab-legenda { margin-top: 16px; font-size: 11.5px; letter-spacing: .06em; color: #9db6d6; }
+.ab-legenda i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 0 6px 0 14px; } .ab-legenda i:first-child { margin-left: 0; }
+@media (max-width: 700px) { .ab-duelo div { grid-template-columns: 1fr auto; } .ab-duelo i { grid-column: 1 / -1; order: 3; } }

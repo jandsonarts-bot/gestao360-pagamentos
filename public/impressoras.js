@@ -373,11 +373,66 @@ function apresentar() {
   nasaApresentar(slides, 'CENTRAL DE CONTROLE · IMPRESSORAS COPYGRAF');
 }
 
+// ---------- nível de gasto: vermelho quando passa do mês anterior, verde quando fica abaixo ----------
+const VERM = '#fb7185', VERDE = '#4ade80', NEUTRO = '#38bdf8';
+const corNivel = (v, p) => (p == null || v === p ? NEUTRO : v > p ? VERM : VERDE);
+const pct = (v, p) => Math.abs(((v - p) / p) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
+function nivel(r, ant) {
+  if (!r.temDado || !ant || !ant.temDado || !ant.total) return { cls: 'ok', txt: '' };
+  const nome = h.nomeMes(ant.mes).split(' ')[0];
+  if (r.total === ant.total) return { cls: '', txt: `igual a ${nome}` };
+  return r.total > ant.total ? { cls: 'bad', txt: `▲ ${pct(r.total, ant.total)} acima de ${nome}` } : { cls: 'ok', txt: `▼ ${pct(r.total, ant.total)} abaixo de ${nome}` };
+}
+
+// ---------- abertura: resumo animado dos dois últimos meses (passa sozinho, como um vídeo) ----------
+const AB_DIA = 'gestao360:abertura:dia', AB_OFF = 'gestao360:abertura:off';
+const aberturaLigada = () => { try { return localStorage.getItem(AB_OFF) !== '1'; } catch { return true; } };
+function abertura(sozinha) {
+  const d = D(); if (!d) return false;
+  const { dados, rot, ult, rank, maxRank } = calcHist(d, '');
+  if (!dados.length || !dados[dados.length - 1].r.temDado) { if (!sozinha) h.toast('Sem dados para mostrar.'); return false; }
+  const x = dados[dados.length - 1], a = dados.length > 1 ? dados[dados.length - 2] : null, r = x.r;
+  const nm = m => h.nomeMes(m).split(' ')[0];
+  const kpi = (t, txt, s, c, f, n) => `<div class="ns-kpi" style="--c:${c}"><span>${t}</span><b data-cnt="${n}" data-f="${f}" style="color:${c === NEUTRO ? '#fff' : c}">${txt}</b><small>${s}</small></div>`;
+  const dif = (v, p, fmt) => (p == null ? '' : v === p ? `igual a ${nm(a.m)}` : `${v > p ? '▲' : '▼'} ${fmt(Math.abs(v - p))} ${v > p ? 'a mais' : 'a menos'} que ${nm(a.m)}${p ? ` (${pct(v, p)})` : ''}`);
+  const corT = corNivel(r.total, a?.r.total), maxT = Math.max(1, r.total, a?.r.total || 0);
+  const barra = (nome, v, c) => `<div><span>${nome}</span><i><u style="width:${(v / maxT) * 100}%;background:${c};color:${c}"></u></i><b style="color:${c === NEUTRO ? '#fff' : c}">${brl(v)}</b></div>`;
+  const slides = [];
+  slides.push(a ? { titulo: `${nm(a.m)} × ${nm(x.m)} · gasto com impressoras`, html: () => `<div class="ns-kpis">${
+      kpi(`Folha de ${nm(a.m)}`, brl(a.r.total), a.r.info.pago ? 'paga' : a.r.status === 'FECHADO' ? 'fechada' : 'em aberto', NEUTRO, 'brl', reais(a.r.total))}${
+      kpi(`Folha de ${nm(x.m)}`, brl(r.total), r.parcial ? 'parcial, pela última leitura' : `paga em ${nm(C.mesPagamento(x.m))}`, corT, 'brl', reais(r.total))}${
+      kpi(r.total > a.r.total ? 'Gastou a mais' : r.total < a.r.total ? 'Economizou' : 'Diferença', brl(Math.abs(r.total - a.r.total)), a.r.total ? `${pct(r.total, a.r.total)} ${r.total > a.r.total ? 'acima' : r.total < a.r.total ? 'abaixo' : 'de diferença'} de ${nm(a.m)}` : '', corT, 'brl', reais(Math.abs(r.total - a.r.total)))}</div>
+      <div class="ns-rank ab-duelo">${barra(nm(a.m), a.r.total, NEUTRO)}${barra(nm(x.m), r.total, corT)}</div>
+      <p class="ab-legenda"><i style="background:${VERM}"></i>vermelho: gastou mais que o mês anterior <i style="background:${VERDE}"></i>verde: gastou menos</p>` }
+    : { titulo: `Folha de ${nm(x.m)} · gasto com impressoras`, html: () => `<div class="ns-kpis">${kpi('Valor a pagar', brl(r.total), r.parcial ? 'parcial' : `paga em ${nm(C.mesPagamento(x.m))}`, NEUTRO, 'brl', reais(r.total))}</div>` });
+  slides.push({ titulo: `Folhas impressas em ${nm(x.m)}`, html: () => `<div class="ns-kpis">${
+      kpi('Coloridas', int(r.pagCor), `${dif(r.pagCor, a?.r.pagCor, v => int(v) + ' fls')}${a ? ' · ' : ''}${brl(r.valorCor)}`, corNivel(r.pagCor, a?.r.pagCor), 'int', r.pagCor)}${
+      kpi('Preto e branco', int(r.pagPb), `${dif(r.pagPb, a?.r.pagPb, v => int(v) + ' fls')}${a ? ' · ' : ''}${brl(r.valorPb)}`, corNivel(r.pagPb, a?.r.pagPb), 'int', r.pagPb)}${
+      kpi('Total de folhas', int(r.pagCor + r.pagPb), dif(r.pagCor + r.pagPb, a ? a.r.pagCor + a.r.pagPb : null, v => int(v) + ' fls'), corNivel(r.pagCor + r.pagPb, a ? a.r.pagCor + a.r.pagPb : null), 'int', r.pagCor + r.pagPb)}</div>` });
+  if (ult && rank.length) slides.push({ titulo: `Quem mais imprimiu · ${nm(ult.m)}`, html: () => `<div class="ns-rank">${rank.slice(0, 10).map(q => `<div><span>${h.esc(C.rotulo(q.p))} · ${h.esc(C.nomeSetor(d, q.p.setorId))}</span><i><u style="width:${(q.v / maxRank) * 100}%;background:${q.cor};color:${q.cor}"></u></i><b>${int(q.v)}</b></div>`).join('')}</div>` });
+  if (dados.length > 2) slides.push({ titulo: 'Valor da folha mês a mês', html: () => graficoValor('ab-valor', true, dados, rot, '') });
+  nasaApresentar(slides, 'GASTOS COM IMPRESSORAS · DOIS ÚLTIMOS MESES', { auto: true });
+  return true;
+}
+// Ao abrir o app: mostra uma vez por dia, só para quem vê valores (funcionário não) e depois que a conta carregou.
+let aberturaVista = false;
+export function aberturaAuto() {
+  if (aberturaVista || souFuncionario() || (cloud.ativo && (!cloud.user || cloud.carregando))) return;
+  try { if (!aberturaLigada() || localStorage.getItem(AB_DIA) === h.hoje()) { aberturaVista = true; return; } } catch {}
+  if (document.querySelector('dialog[open]')) return;
+  if (!abertura(true)) return;
+  aberturaVista = true;
+  try { localStorage.setItem(AB_DIA, h.hoje()); } catch {}
+}
+
 function vResumo() {
   const d = D(), hoje = h.hoje(), mes = h.ui.mes, r = C.resumoMes(d, mes), av = C.avisos(d, hoje);
+  const nv = nivel(r, C.resumoMes(d, C.somaMes(mes, -1)));
   const prox = []; for (let i = 0, dia = hoje; prox.length < 4 && i < 21; i++, dia = C.somaDia(dia, 1)) if (d.dias.includes(C.dataDe(dia).getDay())) prox.push(dia);
-  return `<div class="kpis">
-      <button class="kpi ok" data-act="impSub" data-s="cobranca"><span>${r.parcial ? 'Valor parcial' : 'Valor'} de ${h.nomeMes(mes).split(' ')[0]}</span><b>${brl(r.total)}</b><small>${r.status === 'FECHADO' ? 'mês fechado' : r.parcial ? 'pela última leitura' : 'com todos os fechamentos'}</small></button>
+  return `<div class="tools no-print ab-tools"><button class="btn primary" data-act="impAbertura">▶ Resumo animado dos 2 últimos meses</button>
+      <button class="pill ${aberturaLigada() ? 'on' : ''}" data-act="impAberturaAuto" title="Mostra o resumo animado uma vez por dia, ao abrir o app">Mostrar ao abrir o app: ${aberturaLigada() ? 'sim' : 'não'}</button></div>
+    <div class="kpis">
+      <button class="kpi ${nv.cls}" data-act="impSub" data-s="cobranca"><span>${r.parcial ? 'Valor parcial' : 'Valor'} de ${h.nomeMes(mes).split(' ')[0]}</span><b>${brl(r.total)}</b><small>${nv.txt ? `<strong class="nivel">${nv.txt}</strong> · ` : ''}${r.status === 'FECHADO' ? 'mês fechado' : r.parcial ? 'pela última leitura' : 'com todos os fechamentos'}</small></button>
       <button class="kpi" data-act="impSub" data-s="mes"><span>Coloridas</span><b>${int(r.pagCor)}</b><small>${brl(r.valorCor)}</small></button>
       <button class="kpi" data-act="impSub" data-s="mes"><span>Preto e branco</span><b>${int(r.pagPb)}</b><small>${brl(r.valorPb)}</small></button>
       <button class="kpi ${av.length ? 'bad' : ''}" data-act="impIrLancar"><span>Leituras da semana</span><b>${av.filter(a => a.tipo === 'hoje' || a.tipo === 'falta').length ? 'Pendente' : 'Em dia'}</b><small>${C.ativas(d).length} impressoras ativas</small></button>
@@ -610,6 +665,8 @@ export const impActs = {
     h.render(); window.scrollTo(0, 0);
   },
   impApresentar: apresentar,
+  impAbertura: () => { if (!souFuncionario()) abertura(false); },
+  impAberturaAuto: () => { try { aberturaLigada() ? localStorage.setItem(AB_OFF, '1') : localStorage.removeItem(AB_OFF); } catch {} h.render(); },
   impCmpMes: el => { U().cmp = el.dataset.mes; h.render(); window.scrollTo(0, 0); },
   impSub: el => { if (souFuncionario() && !SUBS_FUNC.includes(el.dataset.s)) return; U().sub = el.dataset.s; h.ui.anim = true; h.render(); window.scrollTo(0, 0); },
   impIrLancar: el => irLancar(el.dataset.data, el.dataset.mes),
