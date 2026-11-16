@@ -696,7 +696,7 @@ export const impActs = {
     ['Série', 'Mês de referência', 'Data', 'Tipo', 'Contador'].map(v => ({ v, e: E.B })),
     ['XBJX000000', '11/2026', '13/11/2026', 'Semanal – Sexta', 150500], ['XBJX000000', '11/2026', '30/11/2026', 'Fechamento do mês', 152300]] }]), 'modelo-leituras-impressoras.xlsx'),
   impExportarHist: () => { const d = D(), serie = id => d.impressoras.find(p => p.id === id)?.serie || null;
-    baixarBlob(new Blob([JSON.stringify({ formato: C.FORMATO, setores: d.setores.map(s => s.nome),
+    baixarBlob(new Blob([JSON.stringify({ formato: C.FORMATO, folhaV3: true, setores: d.setores.map(s => s.nome),
       impressoras: d.impressoras.map(p => ({ setor: C.nomeSetor(d, p.setorId), resp: p.resp, serie: p.serie, apelido: p.apelido, modelo: p.modelo, tipo: p.tipo, locadora: p.locadora, ini: p.ini, iniMes: p.iniMes, status: p.status, substPorSerie: serie(p.substPor), obs: p.obs })),
       precos: d.precos.map(({ desde, cor, pb, obs }) => ({ desde, cor, pb, obs })),
       leituras: d.leituras.map(l => ({ serie: serie(l.imp), data: l.data, mes: l.mes, tipo: l.tipo, cont: l.cont, obs: l.obs, origem: l.origem })),
