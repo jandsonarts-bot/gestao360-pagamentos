@@ -609,3 +609,16 @@ tr.sel td { background: var(--accent-soft); }
 .kpi .nivel { font-weight: 800; }
 .kpi.bad .nivel { color: var(--bad); } .kpi.ok .nivel { color: var(--ok); }
 .ab-tools { margin-bottom: 12px; }
+
+/* ---- aba Patrimônio Vita ---- */
+.pill em { font-style: normal; font-size: 11px; font-weight: 700; opacity: .75; margin-left: 2px; }
+.pat-scroll { overflow-x: auto; }
+.pat-tab td, .pat-tab th { white-space: nowrap; }
+.pat-tab td:last-child, .pat-tab td:nth-last-child(2) { white-space: normal; min-width: 180px; }
+.pat-tab td:last-child { min-width: 0; }
+.file small { font-weight: 400; }
+@media (max-width: 820px) {
+  /* com 8 abas a barra de baixo rola para os lados em telas estreitas */
+  .tabs { grid-template-columns: repeat(8, minmax(60px, 1fr)); overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+}

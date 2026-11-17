@@ -1,6 +1,7 @@
 import { souFuncionario, state, save, onChange, cloud, initCloud, login, logout, addAnexo, urlAnexo, delAnexo, arquivoAnexo, avisoZapAgora, restaurar, salvarEquipe, uid } from './store.js';
 import * as IC from './imp-calc.js';
 import { initImp, vImpressoras, impActs, impForms, impChanges, impInputs, agendaDia, agendaPainel, avisoPainel, notificarImp, aberturaAuto } from './impressoras.js';
+import { initPat, vPatrimonio, patActs, patForms, patChanges, patInputs } from './patrimonio.js';
 
 // ---------- utilidades ----------
 const app = document.getElementById('app');
@@ -36,6 +37,7 @@ const I = {
   paleta: '<path d="M12 3a9 9 0 100 18c1.2 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.2A3.8 3.8 0 0021 10.6C21 6.4 17 3 12 3z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="10" cy="7.5" r="1"/><circle cx="15" cy="7.5" r="1"/>',
   baixar: '<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',
   nuvem: '<path d="M7 18a4.5 4.5 0 01-.6-9A6 6 0 0118 10.5a3.8 3.8 0 01-.5 7.5z"/>',
+  patrimonio: '<rect x="3" y="5" width="18" height="11" rx="2"/><path d="M8 20h8M12 16v4"/>',
   impressoras: '<path d="M7 8V3h10v5M7 17H5a2 2 0 01-2-2v-4a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2h-2"/><rect x="7" y="14" width="10" height="7" rx="1"/>',
 };
 const ic = n => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
@@ -452,6 +454,7 @@ const VIEWS = {
   painel: ['Painel', vPainel], agenda: ['Agenda', vAgenda], mensais: ['Mensais', vMensais],
   pedidos: ['Pedidos', vPedidos], documentos: ['Documentos', vDocs, 'Docs'], prestadores: ['Prestadores', vPrestadores, 'Prestad.'],
   impressoras: ['Impressoras', vImpressoras, 'Impress.'],
+  patrimonio: ['Patrimônio Vita', vPatrimonio, 'Patrim.'],
 };
 
 function render() {
@@ -469,7 +472,7 @@ function render() {
   const VV = func ? { impressoras: VIEWS.impressoras } : VIEWS;
   const nav = cls => Object.entries(VV).map(([k, [t, , curto]]) =>
     `<button class="${cls} ${ui.view === k ? 'on' : ''}" data-act="ir" data-v="${k}">${ic(k)}<span>${cls === 'tab' && curto || t}</span></button>`).join('');
-  const comMes = !['pedidos', 'prestadores', 'documentos'].includes(ui.view);
+  const comMes = !['pedidos', 'prestadores', 'documentos', 'patrimonio'].includes(ui.view);
   const anim = ui.anim ? 'in' : ''; ui.anim = false;
   app.innerHTML = `<div class="shell">
     <aside class="side">
@@ -886,6 +889,9 @@ const forms = {
 // aba Impressoras: ações e formulários ficam em impressoras.js
 Object.assign(acts, impActs);
 Object.assign(forms, impForms);
+// aba Patrimônio Vita: ações e formulários ficam em patrimonio.js
+Object.assign(acts, patActs);
+Object.assign(forms, patForms);
 
 document.addEventListener('click', ev => {
   if (ev.target === dlg) return fechar();
@@ -905,6 +911,7 @@ document.addEventListener('submit', async ev => {
 });
 document.addEventListener('input', ev => {
   impInputs[ev.target.dataset.input]?.(ev.target);
+  patInputs[ev.target.dataset.input]?.(ev.target);
   if (ev.target.dataset.input === 'busca') { ui.busca = ev.target.value; render(); }
   if (ev.target.dataset.input === 'corLivre') {
     tema = { ...tema, cor: null, custom: ev.target.value }; aplicarTema();
@@ -915,6 +922,7 @@ document.addEventListener('input', ev => {
 document.addEventListener('change', async ev => {
   const t = ev.target;
   if (impChanges[t.dataset.change]) return impChanges[t.dataset.change](t);
+  if (patChanges[t.dataset.change]) return patChanges[t.dataset.change](t);
   if (t.dataset.change === 'zapMeu' || t.dataset.change === 'zapFin') { state.config[t.dataset.change] = t.value.trim(); save(); toast('Número salvo'); }
   if (t.dataset.change === 'importar' && t.files[0]) {
     try {
@@ -956,7 +964,7 @@ function notificar(forcar) {
 }
 
 // ---------- interações ----------
-const semMes = () => ['pedidos', 'prestadores', 'documentos'].includes(ui.view);
+const semMes = () => ['pedidos', 'prestadores', 'documentos', 'patrimonio'].includes(ui.view);
 const mudarMes = n => { ui.mes = addMes(ui.mes, n); ui.dia = null; ui.anim = true; render(); };
 // brilho que acompanha o cursor nos cartões
 document.addEventListener('pointermove', ev => {
@@ -989,7 +997,9 @@ window.addEventListener('beforeinstallprompt', ev => { ev.preventDefault(); inst
 window.addEventListener('appinstalled', () => { instalar = null; render(); toast('App instalado'); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
-initImp({ zapUrl, esc, ic, abrir, fechar, cab, campo, toast, render, ui, subir, dVer, baixar, dPedido, hoje, fmtData, nomeMes, MESES, vazio });
+const util = { zapUrl, esc, ic, abrir, fechar, cab, campo, toast, render, ui, subir, dVer, baixar, dPedido, hoje, fmtData, nomeMes, MESES, vazio };
+initImp(util);
+initPat(util);
 aplicarTema();
 onChange(render);
 onChange(() => setTimeout(aberturaAuto, 600));
