@@ -231,6 +231,7 @@ function vCobranca() {
     <div class="tools no-print">
       ${fech ? (souAdmin() ? `<button class="btn" data-act="impReabrir">Reabrir mês</button>` : '<span class="muted">Só o administrador reabre o mês.</span>')
         : `<button class="btn primary" data-act="impFechar">${h.ic('check')}Fechar mês</button>`}
+      ${souAdmin() && d.leituras.some(l => l.mes === mes) ? `<button class="btn" data-act="impJuntar" title="Passa as últimas leituras deste mês para o fechamento do mês anterior">Juntar a ${h.nomeMes(C.somaMes(mes, -1)).split(' ')[0].toLowerCase()}</button>` : ''}
       <span class="grow"></span>
       <button class="btn" data-act="impPaga">${h.ic('check')}${i.pago ? 'Desmarcar como paga' : 'Marcar como paga'}</button>
       <button class="btn" data-act="impPagamento" title="Cria o pagamento na agenda">${h.ic('mais')}Lançar em Pagamentos</button>
@@ -738,6 +739,27 @@ export const impActs = {
     if (!confirm(`Reabrir ${h.nomeMes(mes)}? As leituras voltam a poder ser alteradas.`)) return;
     const m = garantirMes(mes); m.status = 'ABERTO'; delete m.precoCor; delete m.precoPb; delete m.total; m.reabertoPor = eu(); m.reabertoEm = new Date().toISOString();
     save(); h.toast(`${h.nomeMes(mes)} reaberto`);
+  },
+  // Leitura lançada no mês seguinte por engano (ex.: leitura de hoje foi para dezembro): passa a ser o fechamento do mês anterior.
+  impJuntar: () => {
+    if (!souAdmin()) return h.toast('Só o administrador junta leituras.');
+    const d = D(), mes = h.ui.mes, ant = C.somaMes(mes, -1), agora = new Date().toISOString();
+    const ultimas = [];
+    for (const p of C.ativas(d)) {
+      const ls = d.leituras.filter(l => l.imp === p.id && l.mes === mes).sort((a, b) => b.data.localeCompare(a.data) || b.cont - a.cont);
+      if (ls[0]) ultimas.push({ p, l: ls[0], velho: d.leituras.find(x => x.imp === p.id && x.tipo === 'FECHAMENTO' && x.mes === ant) });
+    }
+    if (!ultimas.length) return h.toast(`Não há leituras em ${h.nomeMes(mes)} para juntar.`);
+    if (!confirm(`Juntar as leituras de ${h.nomeMes(mes)} a ${h.nomeMes(ant)}?\n\n${ultimas.map(u => `• ${C.rotulo(u.p)}: ${int(u.l.cont)} (${h.fmtData(u.l.data).slice(0, 5)})${u.velho ? ` substitui ${int(u.velho.cont)}` : ''}`).join('\n')}\n\nCada uma vira o fechamento de ${h.nomeMes(ant)}${C.mesFechado(d, ant) ? ', que será reaberto para conferência' : ''}.`)) return;
+    for (const u of ultimas) {
+      if (u.velho) { d.leituras = d.leituras.filter(x => x !== u.velho); C.registrar(d, 'EXCLUIU', u.velho, eu()); }
+      const antes = { data: u.l.data, mes: u.l.mes, tipo: u.l.tipo, cont: u.l.cont };
+      Object.assign(u.l, { mes: ant, tipo: 'FECHAMENTO', altPor: eu(), altEm: agora });
+      C.registrar(d, 'ALTEROU', u.l, eu(), antes);
+    }
+    if (C.mesFechado(d, ant)) { const m = garantirMes(ant); m.status = 'ABERTO'; delete m.precoCor; delete m.precoPb; delete m.total; m.reabertoPor = eu(); m.reabertoEm = agora; }
+    h.ui.mes = ant;
+    save(); h.toast(`Leituras juntadas a ${h.nomeMes(ant)}. Confira e feche o mês.`);
   },
   impPaga: () => { const m = garantirMes(h.ui.mes); m.pago = !m.pago; if (m.pago) m.pagoEm = new Date().toISOString(); save(); h.toast(m.pago ? 'Folha marcada como paga' : 'Marca de paga removida'); },
   impImprimir: () => window.print(),
