@@ -586,14 +586,14 @@ function ics() {
 // ---------- tela principal ----------
 const SUBS = { conferir: ['Conferir', vConferir], comparar: ['Comparativo', vComparar], resumo: ['Resumo', vResumo], lancar: ['Lançar leituras', vLancar], mes: ['Mês', vMes], cobranca: ['Cobrança', vCobranca], historico: ['Histórico', vHist], cadastro: ['Cadastro', vCadastro] };
 const SUBS_FUNC = ['lancar', 'mes'];   // funcionário: lança leituras e confere a grade do mês (sem valores em R$)
-// Junção automática (pedido de 23/11/2026): a leitura lançada em 23/11 em dezembro conta como fechamento de novembro.
-// Roda uma vez, quando o administrador abre a aba, e deixa a marca "juntaAuto" no mês para não repetir.
+// Junção automática (pedido de 23/11/2026): toda leitura de novembro que cair em dezembro volta sozinha para novembro.
+// Roda sempre que o app carrega ou salva, e dezembro fica sem registros até a folha de dezembro começar de fato.
 function autoJuntarNov() {
-  const d = D(), ant = '2026-11', mes = '2026-12', dia = '2026-11-23';
-  if (!d || !Array.isArray(d.leituras) || !souAdmin()) return;
-  if (d.meses?.[ant]?.juntaAuto) return;
-  const ult = new Map();
-  for (const l of d.leituras) if (l.mes === mes && l.data === dia) { const a = ult.get(l.imp); if (!a || l.cont > a.cont) ult.set(l.imp, l); }
+  const d = D(), ant = '2026-11', mes = '2026-12';
+  if (!d || !Array.isArray(d.leituras) || souFuncionario()) return;
+  const ult = new Map(), outras = [];
+  const mover = d.leituras.filter(l => l.mes === mes && l.data < '2026-12-01').sort((a, b) => a.data.localeCompare(b.data) || a.cont - b.cont);
+  for (const l of mover) { const a = ult.get(l.imp); if (a) outras.push(a); ult.set(l.imp, l); }   // a mais recente de cada impressora vira o fechamento; as anteriores só mudam de mês
   if (!ult.size) return;
   const agora = new Date().toISOString(), estavaFechado = C.mesFechado(d, ant);
   for (const l of ult.values()) {
@@ -603,6 +603,7 @@ function autoJuntarNov() {
     Object.assign(l, { mes: ant, tipo: 'FECHAMENTO', altPor: 'junção automática', altEm: agora });
     C.registrar(d, 'ALTEROU', l, 'junção automática', antes);
   }
+  for (const l of outras) { const antes = { data: l.data, mes: l.mes, tipo: l.tipo, cont: l.cont }; l.mes = ant; if (l.tipo === 'FECHAMENTO') l.tipo = 'SEG'; C.registrar(d, 'ALTEROU', l, 'junção automática', antes); }
   const m = garantirMes(ant);
   m.status = 'ABERTO'; delete m.precoCor; delete m.precoPb; delete m.total;
   if (estavaFechado) {
