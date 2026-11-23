@@ -418,6 +418,7 @@ function abertura(sozinha) {
 // Ao abrir o app: mostra uma vez por dia, só para quem vê valores (funcionário não) e depois que a conta carregou.
 let aberturaVista = false;
 export function aberturaAuto() {
+  if (!(cloud.ativo && (!cloud.user || cloud.carregando))) autoJuntarNov();   // junção automática, assim que a conta carrega
   if (aberturaVista || souFuncionario() || (cloud.ativo && (!cloud.user || cloud.carregando))) return;
   try { if (!aberturaLigada() || localStorage.getItem(AB_DIA) === h.hoje()) { aberturaVista = true; return; } } catch {}
   if (document.querySelector('dialog[open]')) return;
@@ -585,7 +586,35 @@ function ics() {
 // ---------- tela principal ----------
 const SUBS = { conferir: ['Conferir', vConferir], comparar: ['Comparativo', vComparar], resumo: ['Resumo', vResumo], lancar: ['Lançar leituras', vLancar], mes: ['Mês', vMes], cobranca: ['Cobrança', vCobranca], historico: ['Histórico', vHist], cadastro: ['Cadastro', vCadastro] };
 const SUBS_FUNC = ['lancar', 'mes'];   // funcionário: lança leituras e confere a grade do mês (sem valores em R$)
+// Junção automática (pedido de 23/11/2026): a leitura lançada em 23/11 em dezembro conta como fechamento de novembro.
+// Roda uma vez, quando o administrador abre a aba, e deixa a marca "juntaAuto" no mês para não repetir.
+function autoJuntarNov() {
+  const d = D(), ant = '2026-11', mes = '2026-12', dia = '2026-11-23';
+  if (!d || !Array.isArray(d.leituras) || !souAdmin()) return;
+  if (d.meses?.[ant]?.juntaAuto) return;
+  const ult = new Map();
+  for (const l of d.leituras) if (l.mes === mes && l.data === dia) { const a = ult.get(l.imp); if (!a || l.cont > a.cont) ult.set(l.imp, l); }
+  if (!ult.size) return;
+  const agora = new Date().toISOString(), estavaFechado = C.mesFechado(d, ant);
+  for (const l of ult.values()) {
+    const velho = d.leituras.find(x => x !== l && x.imp === l.imp && x.tipo === 'FECHAMENTO' && x.mes === ant);
+    if (velho) { d.leituras = d.leituras.filter(x => x !== velho); C.registrar(d, 'EXCLUIU', velho, 'junção automática'); }
+    const antes = { data: l.data, mes: l.mes, tipo: l.tipo, cont: l.cont };
+    Object.assign(l, { mes: ant, tipo: 'FECHAMENTO', altPor: 'junção automática', altEm: agora });
+    C.registrar(d, 'ALTEROU', l, 'junção automática', antes);
+  }
+  const m = garantirMes(ant);
+  m.status = 'ABERTO'; delete m.precoCor; delete m.precoPb; delete m.total;
+  if (estavaFechado) {
+    const r = C.resumoMes(d, ant);
+    if (r.preco) Object.assign(m, { status: 'FECHADO', precoCor: C.txt4(r.preco.cor), precoPb: C.txt4(r.preco.pb), total: C.txtCent(r.total), fechadoPor: 'junção automática', fechadoEm: agora });
+  }
+  m.juntaAuto = agora;
+  save(); h.toast(`Leitura de hoje juntada a ${h.nomeMes(ant)} automaticamente.`);
+}
+
 export function vImpressoras() {
+  autoJuntarNov();
   const d = D(), u = U(), func = souFuncionario();
   if (func && !SUBS_FUNC.includes(u.sub)) u.sub = 'lancar';
   if (!d.impressoras.length && u.sub !== 'cadastro') {
