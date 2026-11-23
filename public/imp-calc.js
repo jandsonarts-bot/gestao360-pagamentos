@@ -137,7 +137,7 @@ export const dataValida = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '') && !isNaN(dat
 export function sugerir(data, imp) {
   const d = dataDe(data), dia = d.getDay(), mes = data.slice(0, 7), d6 = d.getDate() <= 6;
   // até o dia 6 (fechamento e leitura da folha) vale a folha do próprio mês; depois, já conta para a folha que fecha no mês seguinte
-  const folha = d6 ? mes : somaMes(mes, 1);
+  const folha = d6 || (data >= '2026-11-07' && data <= '2026-11-30') ? mes : somaMes(mes, 1);   // pedido de 23/11/2026: leituras de novembro contam para novembro
   if (d.getDate() === 6) return { tipo: 'FECHAMENTO', mes };   // dia 06: leitura de fechamento da folha, fechada com a leitura do dia 06
   // passou do dia 06 e a folha do mês ainda não tem contagem de fechamento: esta contagem fecha a folha (fechamento atrasado)
   if (imp && !d6 && !mesFechado(imp, mes) && ativas(imp).length && ativas(imp).some(p => baseAnterior(imp, p, mes))
