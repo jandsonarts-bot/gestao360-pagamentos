@@ -2,6 +2,7 @@ import { souFuncionario, state, save, onChange, cloud, initCloud, login, logout,
 import * as IC from './imp-calc.js';
 import { initImp, vImpressoras, impActs, impForms, impChanges, impInputs, agendaDia, agendaPainel, avisoPainel, notificarImp, aberturaAuto } from './impressoras.js';
 import { initPat, vPatrimonio, patActs, patForms, patChanges, patInputs } from './patrimonio.js';
+import { initAtas, vAtas, atasActs, atasForms, atasInputs } from './atas.js';
 
 // ---------- utilidades ----------
 const app = document.getElementById('app');
@@ -38,6 +39,7 @@ const I = {
   baixar: '<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',
   nuvem: '<path d="M7 18a4.5 4.5 0 01-.6-9A6 6 0 0118 10.5a3.8 3.8 0 01-.5 7.5z"/>',
   patrimonio: '<rect x="3" y="5" width="18" height="11" rx="2"/><path d="M8 20h8M12 16v4"/>',
+  atas: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7M9 9h2"/>',
   impressoras: '<path d="M7 8V3h10v5M7 17H5a2 2 0 01-2-2v-4a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2h-2"/><rect x="7" y="14" width="10" height="7" rx="1"/>',
 };
 const ic = n => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
@@ -455,6 +457,7 @@ const VIEWS = {
   pedidos: ['Pedidos', vPedidos], documentos: ['Documentos', vDocs, 'Docs'], prestadores: ['Prestadores', vPrestadores, 'Prestad.'],
   impressoras: ['Impressoras', vImpressoras, 'Impress.'],
   patrimonio: ['Patrimônio Vita', vPatrimonio, 'Patrim.'],
+  atas: ['Atas de reunião', vAtas, 'Atas'],
 };
 
 function render() {
@@ -472,7 +475,7 @@ function render() {
   const VV = func ? { impressoras: VIEWS.impressoras } : VIEWS;
   const nav = cls => Object.entries(VV).map(([k, [t, , curto]]) =>
     `<button class="${cls} ${ui.view === k ? 'on' : ''}" data-act="ir" data-v="${k}">${ic(k)}<span>${cls === 'tab' && curto || t}</span></button>`).join('');
-  const comMes = !['pedidos', 'prestadores', 'documentos', 'patrimonio'].includes(ui.view);
+  const comMes = !['pedidos', 'prestadores', 'documentos', 'patrimonio', 'atas'].includes(ui.view);
   const anim = ui.anim ? 'in' : ''; ui.anim = false;
   app.innerHTML = `<div class="shell">
     <aside class="side">
@@ -892,6 +895,9 @@ Object.assign(forms, impForms);
 // aba Patrimônio Vita: ações e formulários ficam em patrimonio.js
 Object.assign(acts, patActs);
 Object.assign(forms, patForms);
+// aba Atas de reunião: ações e formulários ficam em atas.js
+Object.assign(acts, atasActs);
+Object.assign(forms, atasForms);
 
 document.addEventListener('click', ev => {
   if (ev.target === dlg) return fechar();
@@ -912,6 +918,7 @@ document.addEventListener('submit', async ev => {
 document.addEventListener('input', ev => {
   impInputs[ev.target.dataset.input]?.(ev.target);
   patInputs[ev.target.dataset.input]?.(ev.target);
+  atasInputs[ev.target.dataset.input]?.(ev.target);
   if (ev.target.dataset.input === 'busca') { ui.busca = ev.target.value; render(); }
   if (ev.target.dataset.input === 'corLivre') {
     tema = { ...tema, cor: null, custom: ev.target.value }; aplicarTema();
@@ -964,7 +971,7 @@ function notificar(forcar) {
 }
 
 // ---------- interações ----------
-const semMes = () => ['pedidos', 'prestadores', 'documentos', 'patrimonio'].includes(ui.view);
+const semMes = () => ['pedidos', 'prestadores', 'documentos', 'patrimonio', 'atas'].includes(ui.view);
 const mudarMes = n => { ui.mes = addMes(ui.mes, n); ui.dia = null; ui.anim = true; render(); };
 // brilho que acompanha o cursor nos cartões
 document.addEventListener('pointermove', ev => {
@@ -1000,6 +1007,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 const util = { zapUrl, esc, ic, abrir, fechar, cab, campo, toast, render, ui, subir, dVer, baixar, dPedido, hoje, fmtData, nomeMes, MESES, vazio };
 initImp(util);
 initPat(util);
+initAtas(util);
 aplicarTema();
 onChange(render);
 onChange(() => setTimeout(aberturaAuto, 600));
