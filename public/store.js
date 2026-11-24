@@ -313,6 +313,14 @@ export async function avisoZapAgora() {
   return (await chamar()).data;
 }
 
+// Atas de reunião: a IA do Claude (no servidor) transforma as anotações em uma ata estruturada.
+export async function gerarAtaIA(texto) {
+  if (!fb || !cloud.user) throw new Error('Disponível depois de conectar ao Firebase.');
+  const Fn = await import(FB + 'firebase-functions.js');
+  const chamar = Fn.httpsCallable(Fn.getFunctions(fb.app, 'southamerica-east1'), 'gerarAta', { timeout: 90000 });
+  return (await chamar({ texto })).data;
+}
+
 // Backup: troca todos os dados pelos de um arquivo exportado antes.
 export function restaurar(dados) {
   if (!dados || !Array.isArray(dados.empresas)) throw new Error('Arquivo de backup inválido.');
