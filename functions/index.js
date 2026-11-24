@@ -24,6 +24,8 @@ const { getFirestore } = require('firebase-admin/firestore');
 initializeApp();
 
 const TOKEN = defineSecret('WHATSAPP_TOKEN');
+const CLAUDE_KEY = defineSecret('ANTHROPIC_API_KEY');
+const CLAUDE_MODEL = defineString('CLAUDE_MODEL', { default: 'claude-sonnet-5-5' });
 const PHONE_ID = defineString('WHATSAPP_PHONE_ID');
 const TEMPLATE = defineString('WHATSAPP_TEMPLATE', { default: 'alerta_pagamentos' });
 const TEMPLATE_IMP = defineString('WHATSAPP_TEMPLATE_IMPRESSORAS', { default: 'aviso_impressoras' });
@@ -272,3 +274,52 @@ exports.enviarAvisoImpressorasAgora = onCall({ region: REGION, secrets: [TOKEN] 
 });
 
 exports._teste = { alertas, numero, avisosImpressoras };
+
+
+// ---------- Atas de reunião: leitura das anotações com a IA do Claude ----------
+// Configuração (uma vez):  firebase functions:secrets:set ANTHROPIC_API_KEY   -> chave da API da Anthropic
+// A chave fica só no servidor; o app chama esta função já logado e nunca vê a chave.
+const PROMPT_ATA = `Você organiza anotações de reuniões de uma escola (Colégio Vita) em uma ata formal, em português do Brasil.
+Use SOMENTE o que está no texto: nunca invente nomes, datas, horários, decisões ou ações. Campo que não aparece no texto fica vazio.
+Separe o que foi discutido (discussao) do que foi decidido (decisoes). Cada ação (acoes) precisa ter o que fazer, o responsável e o prazo quando citados.
+Datas em AAAA-MM-DD (se faltar o ano, use o ano de hoje informado). Horários em HH:MM.
+tipo deve ser um destes: "Equipe de apoio", "Gestão", "Pedagógica", "Compras e fornecedores", "Pais e responsáveis", "Outra".
+Responda APENAS com um JSON, sem texto antes ou depois, neste formato:
+{"titulo":"","tipo":"","data":"","ini":"","fim":"","local":"","part":[""],"pauta":[""],"disc":[""],"dec":[""],"acoes":[{"t":"","r":"","p":""}],"prox":""}`;
+
+exports.gerarAta = onCall({ region: REGION, secrets: [CLAUDE_KEY], timeoutSeconds: 90, maxInstances: 3 }, async req => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta.');
+  // só quem já usa o app (dono ou membro de equipe) pode gastar a cota da IA
+  const db = getFirestore();
+  const email = String(req.auth.token.email || '').toLowerCase();
+  const eq = email ? await db.collection('equipes').where('membros', 'array-contains', email).limit(1).get() : { empty: true };
+  const dono = await db.doc(`users/${req.auth.uid}/dados/principal`).get();
+  if (eq.empty && !dono.exists) throw new HttpsError('permission-denied', 'Sem acesso a esta função.');
+
+  const texto = String(req.data?.texto || '').trim();
+  if (texto.length < 20) throw new HttpsError('invalid-argument', 'Cole as anotações da reunião.');
+  if (texto.length > 20000) throw new HttpsError('invalid-argument', 'Texto muito longo (máximo de 20.000 caracteres).');
+
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': CLAUDE_KEY.value(), 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL.value(), max_tokens: 3000, system: PROMPT_ATA,
+      messages: [{ role: 'user', content: `Hoje é ${hojeISO()}.\n\nAnotações da reunião:\n${texto}` }],
+    }),
+  });
+  if (!resp.ok) throw new HttpsError('internal', `A IA não respondeu (${resp.status}).`);
+  const saida = ((await resp.json()).content || []).map(b => b.text || '').join('');
+  let o;
+  try { o = JSON.parse(saida.slice(saida.indexOf('{'), saida.lastIndexOf('}') + 1)); }
+  catch { throw new HttpsError('internal', 'A IA devolveu um formato inesperado. Tente de novo.'); }
+  const arr = v => (Array.isArray(v) ? v.map(x => String(x || '').trim()).filter(Boolean) : []);
+  const dt = v => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? v : '');
+  const hr = v => (/^\d{2}:\d{2}$/.test(String(v || '')) ? v : '');
+  return {
+    titulo: String(o.titulo || '').trim(), tipo: String(o.tipo || 'Outra'), data: dt(o.data), ini: hr(o.ini), fim: hr(o.fim),
+    local: String(o.local || '').trim(), part: arr(o.part), pauta: arr(o.pauta), disc: arr(o.disc), dec: arr(o.dec),
+    acoes: (Array.isArray(o.acoes) ? o.acoes : []).map(a => ({ t: String(a?.t || '').trim(), r: String(a?.r || 'A definir').trim() || 'A definir', p: dt(a?.p), ok: false })).filter(a => a.t),
+    prox: dt(o.prox),
+  };
+});
