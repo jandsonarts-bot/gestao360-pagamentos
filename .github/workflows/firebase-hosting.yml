@@ -1,0 +1,25 @@
+name: Publicar no Firebase Hosting (automatico)
+
+# Toda vez que um pedido de alteracao (commit) entra na branch main, o app e publicado sozinho.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      TEM_CHAVE: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aviso se a chave ainda nao foi cadastrada
+        if: env.TEM_CHAVE != 'true'
+        run: echo "Cadastre o segredo FIREBASE_SERVICE_ACCOUNT no GitHub para ativar a publicacao automatica."
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        if: env.TEM_CHAVE == 'true'
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: gestao360-pagamentos
