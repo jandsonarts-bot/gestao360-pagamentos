@@ -647,3 +647,9 @@ tr.sel td { background: var(--accent-soft); }
 .ata-pe { margin-top: 16px; padding-top: 6px; border-top: 1px solid #d9dfeb; font-size: 10.5px; color: #667085; display: flex; justify-content: space-between; }
 .ata-papel .vz { color: #667085; font-style: italic; }
 @media (max-width: 640px) { .ata-ig { grid-template-columns: 1fr 1fr; } }
+
+/* ---------- calendário escolar na agenda ---------- */
+.chip.escola { background: color-mix(in srgb, var(--ec) 20%, transparent); color: var(--ec); }
+.badge.escola { background: color-mix(in srgb, var(--ec) 20%, transparent); color: var(--ec); }
+.dt.escola { background: color-mix(in srgb, var(--ec) 18%, transparent); color: var(--ec); } .dt.escola span { color: inherit; }
+.dtx { width: 6px; align-self: stretch; min-height: 34px; border-radius: 4px; flex: none; }
