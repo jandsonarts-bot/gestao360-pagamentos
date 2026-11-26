@@ -1105,3 +1105,30 @@ setTimeout(aberturaAuto, 1200);
 initCloud();
 notificar(); notificarImp();
 setInterval(() => { render(); notificar(); notificarImp(); }, 30 * 60 * 1000);
+
+// ---------- atualização automática ----------
+// Compara o código publicado com o que está rodando; se mudou, recarrega sozinho (sem formulário aberto).
+const ARQ_APP = ['app.js', 'arte.js', 'calendario.js', 'styles.css', 'store.js', 'impressoras.js', 'patrimonio.js', 'atas.js'];
+const assinatura = async () => {
+  const partes = await Promise.all(ARQ_APP.map(f => fetch(`${f}?_=${Date.now()}`, { cache: 'no-store' }).then(r => r.ok ? r.text() : '').catch(() => '')));
+  let h = 0; const t = partes.join('\u0001');
+  for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0;
+  return t.length ? `${t.length}:${h}` : '';
+};
+let assinaturaInicial = '', atualizando = false;
+const verificarVersao = async () => {
+  if (atualizando || document.hidden || !navigator.onLine) return;
+  try {
+    const s = await assinatura();
+    if (!s) return;
+    if (!assinaturaInicial) { assinaturaInicial = s; return; }
+    if (s !== assinaturaInicial && !dlg.open) {
+      atualizando = true; toast('Nova versão disponível. Atualizando…');
+      try { const regs = await navigator.serviceWorker?.getRegistrations?.(); await Promise.all((regs || []).map(r => r.update())); } catch { /* sem service worker */ }
+      setTimeout(() => location.reload(), 1200);
+    }
+  } catch { /* offline: tenta depois */ }
+};
+setTimeout(verificarVersao, 3000);
+setInterval(verificarVersao, 5 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) verificarVersao(); });
