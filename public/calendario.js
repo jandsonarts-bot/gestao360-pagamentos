@@ -84,3 +84,21 @@ export const ESCOLA_PEND = [
 ];
 export const escolaDia = dia => ESCOLA.filter(e => dia >= e.d && dia <= e.e);
 export const escolaEntre = (a, b) => ESCOLA.filter(e => e.e >= a && e.d <= b).sort((x, y) => x.d.localeCompare(y.d));
+// Arte (símbolo) de cada evento: procura palavras no título; se não achar, usa a categoria.
+const ARTES = [
+  [/carnaval/i, '🎭'], [/s[ãa]o jo[ãa]o|quermesse/i, '🔥'], [/gradua[çc][ãa]o natação|natação/i, '🏊'],
+  [/formatura/i, '🎓'], [/p[áa]scoa/i, '🐰'], [/dia das m[ãa]es|oficina com as m[ãa]es|happy hour das m/i, '💐'],
+  [/dia dos pais/i, '👔'], [/avós/i, '👵'], [/dia do estudante/i, '🎒'], [/semana da crian[çc]a/i, '🧸'],
+  [/futsal/i, '⚽'], [/v[ôo]lei/i, '🏐'], [/basquete/i, '🏀'], [/xadrez/i, '♟️'], [/t[êe]nis de mesa/i, '🏓'],
+  [/jud[ôo]/i, '🥋'], [/karat[êe]/i, '🥋'], [/jiu/i, '🥋'], [/gr e ballet|ballet/i, '🩰'], [/gincana de praia/i, '🏖️'],
+  [/intervita|copa vita|festival de basquete/i, '🏆'], [/f[ée]rias/i, '🏖️'], [/feriado/i, '🇧🇷'],
+  [/desfile c[íi]vico/i, '🇧🇷'], [/desfile da primavera/i, '🌸'], [/tr[âa]nsito/i, '🚦'],
+  [/missa|corao[çc][ãa]o|eucaristia/i, '⛪'], [/anivers[áa]rio do vita/i, '🎂'], [/science party/i, '🔬'],
+  [/onu/i, '🌍'], [/tedx/i, '🎤'], [/literário|book club/i, '📚'], [/spelling/i, '🐝'], [/profiss/i, '💼'],
+  [/viol[êe]ncia contra a mulher/i, '💜'], [/almo[çc]o|happy hour/i, '🍽️'], [/vita summit/i, '🚀'],
+  [/mostra de projetos/i, '🧪'], [/planejamento/i, '📋'], [/forma[çc][ãa]o de professores/i, '🧑‍🏫'],
+  [/reuni[ãa]o|acolhida/i, '🤝'], [/avalia[çc][ãa]o|teste|prova/i, '📝'], [/in[íi]cio das aulas|volta [àa]s aulas|adapta[çc][ãa]o/i, '🏫'],
+  [/day use/i, '☀️'], [/festa do educador/i, '🍎'],
+];
+const ARTE_CAT = { aula: '🏫', reuniao: '🤝', evento: '🎉', esporte: '🏅', celebra: '✨', feriado: '🏖️', prova: '📝' };
+export const arte = e => { const r = ARTES.find(([re]) => re.test(e.t)); return r ? r[1] : (ARTE_CAT[e.c] || '📌'); };

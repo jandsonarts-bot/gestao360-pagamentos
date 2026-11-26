@@ -653,3 +653,31 @@ tr.sel td { background: var(--accent-soft); }
 .badge.escola { background: color-mix(in srgb, var(--ec) 20%, transparent); color: var(--ec); }
 .dt.escola { background: color-mix(in srgb, var(--ec) 18%, transparent); color: var(--ec); } .dt.escola span { color: inherit; }
 .dtx { width: 6px; align-self: stretch; min-height: 34px; border-radius: 4px; flex: none; }
+
+/* ---------- Arte dos eventos e impressão da agenda ---------- */
+.day { position: relative; }
+.day .arte { position: absolute; top: 3px; right: 5px; font-size: 18px; line-height: 1; }
+.arte-g { width: 38px; height: 38px; flex: none; display: grid; place-items: center; font-size: 22px; border-radius: 12px; background: color-mix(in srgb, var(--ec) 18%, transparent); }
+.print-doc { display: none; }
+@media print {
+  body.imprimindo > :not(#printDoc) { display: none !important; }
+  body.imprimindo { background: #fff !important; }
+  .print-doc { display: block !important; color: #000; font: 12px/1.35 'Plus Jakarta Sans', Arial, sans-serif; padding: 0; }
+  @page { size: A4; margin: 12mm; }
+  .pd-cab { display: flex; align-items: center; gap: 12px; border-bottom: 3px solid #6d3df0; padding-bottom: 8px; margin-bottom: 10px; }
+  .pd-cab img { height: 46px; } .pd-cab h1 { margin: 0; font-size: 20px; } .pd-cab p { margin: 0; color: #555; } .pd-cab small { margin-left: auto; color: #555; }
+  .pd-grade { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 12px; }
+  .pd-grade th { background: #6d3df0; color: #fff; padding: 4px; font-size: 11px; }
+  .pd-grade td { border: 1px solid #bbb; height: 74px; vertical-align: top; padding: 3px; font-size: 9px; overflow: hidden; }
+  .pd-grade td.vz { background: #f2f2f2; }
+  .pd-grade td b { display: block; font-size: 11px; }
+  .pd-ev { display: block; margin-top: 2px; padding: 1px 3px; border-left: 3px solid var(--ec); background: #f6f6fa; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .pd-lista { width: 100%; border-collapse: collapse; }
+  .pd-lista td, .pd-lista th { border-bottom: 1px solid #ddd; padding: 5px 6px; vertical-align: top; text-align: left; }
+  .pd-lista th { background: #eee; font-size: 11px; } .pd-lista .r { text-align: right; white-space: nowrap; }
+  .pd-lista tr { break-inside: avoid; } .pd-d { white-space: nowrap; width: 96px; font-weight: 700; } .pd-a { width: 28px; font-size: 16px; }
+  .pd-c { white-space: nowrap; width: 150px; } .pd-c i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .pd-lista small { color: #555; }
+  .pd-mes { break-inside: avoid; margin-bottom: 10px; } .pd-mes h2 { margin: 8px 0 4px; font-size: 15px; color: #6d3df0; }
+  .pd-tot { margin-top: 10px; font-size: 13px; }
+}

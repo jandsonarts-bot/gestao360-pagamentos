@@ -1,6 +1,6 @@
 import { souFuncionario, state, save, onChange, cloud, initCloud, login, logout, addAnexo, urlAnexo, delAnexo, arquivoAnexo, avisoZapAgora, restaurar, salvarEquipe, uid } from './store.js';
 import * as IC from './imp-calc.js';
-import { CAT_ESCOLA, ESCOLA_PEND, escolaDia, escolaEntre } from './calendario.js';
+import { CAT_ESCOLA, ESCOLA, ESCOLA_PEND, escolaDia, escolaEntre, arte } from './calendario.js';
 import { initImp, vImpressoras, impActs, impForms, impChanges, impInputs, agendaDia, agendaPainel, avisoPainel, notificarImp, aberturaAuto } from './impressoras.js';
 import { initPat, vPatrimonio, patActs, patForms, patChanges, patInputs } from './patrimonio.js';
 import { initAtas, vAtas, atasActs, atasForms, atasInputs } from './atas.js';
@@ -350,7 +350,7 @@ function dLembrete(l, pre = {}) {
 const escCor = e => CAT_ESCOLA[e.c][1];
 const escSub = e => [e.s, e.l, e.o].filter(Boolean).map(esc).join(' · ');
 function escRow(e) {
-  return `<div class="row lemb"><span class="dtx" style="background:${escCor(e)}"></span>
+  return `<div class="row lemb"><span class="arte-g" style="--ec:${escCor(e)}">${arte(e)}</span>
     <div class="info"><strong>${esc(e.t)}</strong><span>${escSub(e) || CAT_ESCOLA[e.c][0]}</span></div>
     <span class="badge escola" style="--ec:${escCor(e)}">${CAT_ESCOLA[e.c][0]}</span></div>`;
 }
@@ -360,12 +360,69 @@ function vEscolaPainel() {
   if (!ev.length) return '';
   return `<div class="card"><h3>${ic('agenda')}Calendário escolar: próximos 7 dias <em>${ev.length}</em></h3>${ev.map(e => `<div class="row lemb">
       <div class="dt escola" style="--ec:${escCor(e)}"><b>${(e.d < h0 ? h0 : e.d).slice(8)}</b><span>${MESES[+(e.d < h0 ? h0 : e.d).slice(5, 7) - 1].slice(0, 3)}</span></div>
-      <div class="info" data-act="irDia" data-dia="${e.d < h0 ? h0 : e.d}"><strong>${esc(e.t)}</strong><span>${escSub(e) || CAT_ESCOLA[e.c][0]}</span></div></div>`).join('')}</div>`;
+      <div class="info" data-act="irDia" data-dia="${e.d < h0 ? h0 : e.d}"><strong>${arte(e)} ${esc(e.t)}</strong><span>${escSub(e) || CAT_ESCOLA[e.c][0]}</span></div></div>`).join('')}</div>`;
 }
 function vEscolaPend() {
   return `<div class="card"><h3>${ic('sino')}Eventos escolares sem data <em>${ESCOLA_PEND.length}</em></h3>${ESCOLA_PEND.map((p, i) => `<div class="row lemb">
     <div class="info"><strong>${esc(p.t)}</strong><span>${[p.s, p.o].filter(Boolean).map(esc).join(' · ')}</span></div>
     <button class="btn ghost" data-act="pendEscola" data-i="${i}">Definir data</button></div>`).join('')}</div>`;
+}
+
+// ---------- impressão da agenda (calendário escolar e pagamentos, cada um na sua folha) ----------
+const mesImp = () => dlg.querySelector('#impMes')?.value || ui.mes;
+function dImprimir() {
+  abrir(`${cab('Imprimir agenda', 'Calendário escolar e pagamentos saem em folhas separadas.')}
+    <div class="body">
+      ${campo('Mês', `<input id="impMes" type="month" value="${ui.mes}">`)}
+      <div class="card" style="margin:0"><h3>🎭 Calendário escolar</h3>
+        <button class="btn block" data-act="impEscolaMes">Imprimir o mês (grade + lista)</button>
+        <button class="btn block" data-act="impEscolaAno">Imprimir o ano 2027 inteiro</button></div>
+      <div class="card" style="margin:12px 0 0"><h3>💳 Pagamentos</h3>
+        <button class="btn block" data-act="impPag">Imprimir pagamentos do mês</button></div>
+    </div>`);
+}
+function imprimirDoc(html) {
+  fechar();
+  document.getElementById('printDoc')?.remove();
+  const d = document.createElement('div');
+  d.id = 'printDoc'; d.className = 'print-doc'; d.innerHTML = html;
+  document.body.appendChild(d); document.body.classList.add('imprimindo');
+  const fim = () => { document.body.classList.remove('imprimindo'); d.remove(); window.removeEventListener('afterprint', fim); };
+  window.addEventListener('afterprint', fim);
+  setTimeout(() => window.print(), 150);
+}
+const pcab = (t, s) => `<header class="pd-cab"><img src="logo.png" alt="" onerror="this.remove()"><div><h1>${t}</h1><p>${s}</p></div><small>Emitido em ${fmtData(hoje())}</small></header>`;
+const pEv = e => `<tr><td class="pd-d">${e.d === e.e ? fmtData(e.d).slice(0, 5) : fmtData(e.d).slice(0, 5) + ' a ' + fmtData(e.e).slice(0, 5)}</td><td class="pd-a">${arte(e)}</td>
+  <td><b>${esc(e.t)}</b>${escSub(e) ? `<br><small>${escSub(e)}</small>` : ''}</td><td class="pd-c"><i style="background:${escCor(e)}"></i>${CAT_ESCOLA[e.c][0]}</td></tr>`;
+function docEscolaMes(ym) {
+  const [y, m] = ym.split('-').map(Number), n = new Date(y, m, 0).getDate(), ini = new Date(y, m - 1, 1).getDay();
+  let cel = '<td class="vz"></td>'.repeat(ini), c = ini;
+  for (let d = 1; d <= n; d++) {
+    const data = `${ym}-${pad(d)}`, ev = escolaDia(data);
+    cel += `<td><b>${d}</b>${ev.map(e => `<span class="pd-ev" style="--ec:${escCor(e)}">${arte(e)} ${esc(e.t)}</span>`).join('')}</td>`;
+    if (++c % 7 === 0 && d < n) cel += '</tr><tr>';
+  }
+  cel += '<td class="vz"></td>'.repeat((7 - c % 7) % 7);
+  const lista = escolaEntre(`${ym}-01`, `${ym}-${pad(n)}`);
+  return `${pcab('Calendário escolar · ' + nomeMes(ym), 'Colégio Vita')}
+    <table class="pd-grade"><thead><tr>${['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(x => `<th>${x}</th>`).join('')}</tr></thead><tbody><tr>${cel}</tr></tbody></table>
+    ${lista.length ? `<table class="pd-lista">${lista.map(pEv).join('')}</table>` : '<p>Sem eventos escolares neste mês.</p>'}`;
+}
+function docEscolaAno() {
+  const meses = [...new Set(ESCOLA.flatMap(e => [e.d.slice(0, 7), e.e.slice(0, 7)]))].sort();
+  return pcab('Calendário escolar 2027', 'Colégio Vita') + meses.map(ym => {
+    const [y, m] = ym.split('-').map(Number), ev = escolaEntre(`${ym}-01`, `${ym}-${pad(new Date(y, m, 0).getDate())}`);
+    return `<section class="pd-mes"><h2>${nomeMes(ym)}</h2><table class="pd-lista">${ev.map(pEv).join('')}</table></section>`;
+  }).join('') + (ESCOLA_PEND.length ? `<section class="pd-mes"><h2>Sem data definida</h2><table class="pd-lista">${ESCOLA_PEND.map(p => `<tr><td class="pd-d">—</td><td class="pd-a">📌</td><td><b>${esc(p.t)}</b><br><small>${[p.s, p.o].filter(Boolean).map(esc).join(' · ')}</small></td><td></td></tr>`).join('')}</table></section>` : '');
+}
+function docPagamentos(ym) {
+  const its = itensDoMes(ym), tot = its.reduce((s, i) => s + +i.valor, 0), pagos = its.filter(i => i.pago).reduce((s, i) => s + +i.valor, 0);
+  const rot = { pago: 'Pago', enviado: 'No financeiro', atrasado: 'Atrasado', hoje: 'Vence hoje', proximo: 'Vence em breve', pendente: 'A vencer' };
+  return `${pcab('Pagamentos · ' + nomeMes(ym), 'Gestão 360 · Colégio Vita')}
+    <table class="pd-lista pd-pag"><thead><tr><th>Venc.</th><th>Favorecido</th><th>Descrição</th><th>Forma</th><th>Situação</th><th class="r">Valor</th></tr></thead><tbody>
+    ${its.map(i => `<tr><td class="pd-d">${fmtData(i.venc).slice(0, 5)}</td><td><b>${esc(i.titulo)}</b></td><td>${esc(i.sub || '')}</td><td>${esc(i.forma || '')}</td><td>${rot[status(i)]}</td><td class="r">${brl(i.valor)}</td></tr>`).join('') || '<tr><td colspan="6">Nenhum pagamento neste mês.</td></tr>'}
+    </tbody></table>
+    <p class="pd-tot"><b>Total do mês: ${brl(tot)}</b> · Pago: ${brl(pagos)} · Em aberto: ${brl(tot - pagos)}</p>`;
 }
 
 function vAgenda() {
@@ -381,8 +438,8 @@ function vAgenda() {
   for (let d = 1; d <= n; d++) {
     const data = `${ui.mes}-${pad(d)}`, l = porDia[d] || [], lb = lembretesDoDia(data), imp = agendaDia(data), ev = ui.escola ? escolaDia(data) : []; // imp: dia de leitura das impressoras
     cel += `<button class="day ${data === h ? 'today' : ''} ${data === ui.dia ? 'sel' : ''}" data-act="dia" data-dia="${data}">
-      <span class="num">${d}</span>
-      <span class="chips">${ev.slice(0, 1).map(x => `<span class="chip escola" style="--ec:${escCor(x)}">${esc(x.t)}</span>`).join('')}${ev.length > 1 ? `<span class="more">+${ev.length - 1} escola</span>` : ''}${imp ? imp.itens.map(i => `<span class="chip ${i.st}">${i.rotulo}</span>`).join('') : ''}${lb.slice(0, 2).map(x => `<span class="chip lembrete ${x.feito ? 'feito' : ''}">${x.hora ? esc(x.hora) + ' ' : ''}${esc(x.titulo)}</span>`).join('')}${l.slice(0, 3).map(i => `<span class="chip ${status(i)}">${esc(i.titulo)}</span>`).join('')}${l.length > 3 ? `<span class="more">+${l.length - 3}</span>` : ''}</span>
+      <span class="num">${d}</span>${ev.length ? `<span class="arte" title="${esc(ev[0].t)}">${arte(ev[0])}</span>` : ''}
+      <span class="chips">${ev.slice(0, 1).map(x => `<span class="chip escola" style="--ec:${escCor(x)}">${arte(x)} ${esc(x.t)}</span>`).join('')}${ev.length > 1 ? `<span class="more">+${ev.length - 1} escola</span>` : ''}${imp ? imp.itens.map(i => `<span class="chip ${i.st}">${i.rotulo}</span>`).join('') : ''}${lb.slice(0, 2).map(x => `<span class="chip lembrete ${x.feito ? 'feito' : ''}">${x.hora ? esc(x.hora) + ' ' : ''}${esc(x.titulo)}</span>`).join('')}${l.slice(0, 3).map(i => `<span class="chip ${status(i)}">${esc(i.titulo)}</span>`).join('')}${l.length > 3 ? `<span class="more">+${l.length - 3}</span>` : ''}</span>
       <span class="dots">${ev.slice(0, 3).map(x => `<i class="escola" style="background:${escCor(x)}"></i>`).join('')}${imp ? imp.itens.map(i => `<i class="${i.st}"></i>`).join('') : ''}${lb.slice(0, 2).map(() => '<i class="lembrete"></i>').join('')}${l.slice(0, 5).map(i => `<i class="${status(i)}"></i>`).join('')}</span>
     </button>`;
   }
@@ -390,7 +447,7 @@ function vAgenda() {
   return `<div class="cols agenda">
     <div class="card cal"><div class="dow">${['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => `<span>${d}</span>`).join('')}</div>
       <div class="grid">${cel}</div>
-      <div class="legend"><span><i class="pago"></i>Pago</span><span><i class="pendente"></i>A vencer</span><span><i class="enviado"></i>No financeiro</span><span><i class="proximo"></i>Vence em breve</span><span><i class="atrasado"></i>Atrasado</span><span><i class="lembrete"></i>Lembrete</span><button type="button" class="btn ghost" data-act="togEscola" aria-pressed="${ui.escola}">${ui.escola ? 'Ocultar' : 'Mostrar'} calendário escolar</button></div></div>
+      <div class="legend"><span><i class="pago"></i>Pago</span><span><i class="pendente"></i>A vencer</span><span><i class="enviado"></i>No financeiro</span><span><i class="proximo"></i>Vence em breve</span><span><i class="atrasado"></i>Atrasado</span><span><i class="lembrete"></i>Lembrete</span><button type="button" class="btn ghost" data-act="togEscola" aria-pressed="${ui.escola}">${ui.escola ? 'Ocultar' : 'Mostrar'} calendário escolar</button><button type="button" class="btn ghost" data-act="imprimir">${ic('impressoras')}Imprimir</button></div></div>
     <div class="card"><h3>${fmtData(ui.dia)} <em>${brl(sel.reduce((s, i) => s + +i.valor, 0))}</em></h3>
       ${agendaPainel(ui.dia)}
       ${evDia.map(escRow).join('')}
@@ -752,6 +809,10 @@ const reabrir = () => { const it = atual(); it ? dDetalhe(it) : fechar(); };
 
 const acts = {
   novoLembrete: el => dLembrete(null, { data: el.dataset.data }),
+  imprimir: () => dImprimir(),
+  impEscolaMes: () => imprimirDoc(docEscolaMes(mesImp())),
+  impEscolaAno: () => imprimirDoc(docEscolaAno()),
+  impPag: () => imprimirDoc(docPagamentos(mesImp())),
   togEscola: () => { ui.escola = !ui.escola; render(); },
   pendEscola: el => { const p = ESCOLA_PEND[+el.dataset.i]; if (p) dLembrete(null, { titulo: p.t, desc: [p.s, p.o].filter(Boolean).join(' · ') }); },
   editarLembrete: el => { const l = state.lembretes.find(x => x.id === el.dataset.id); if (l) dLembrete(l); },
