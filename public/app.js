@@ -1,6 +1,7 @@
 import { souFuncionario, state, save, onChange, cloud, initCloud, login, logout, addAnexo, urlAnexo, delAnexo, arquivoAnexo, avisoZapAgora, restaurar, salvarEquipe, uid } from './store.js';
 import * as IC from './imp-calc.js';
 import { CAT_ESCOLA, ESCOLA, ESCOLA_PEND, escolaDia, escolaEntre, arte } from './calendario.js';
+import { ilu } from './arte.js';
 import { initImp, vImpressoras, impActs, impForms, impChanges, impInputs, agendaDia, agendaPainel, avisoPainel, notificarImp, aberturaAuto } from './impressoras.js';
 import { initPat, vPatrimonio, patActs, patForms, patChanges, patInputs } from './patrimonio.js';
 import { initAtas, vAtas, atasActs, atasForms, atasInputs } from './atas.js';
@@ -350,7 +351,7 @@ function dLembrete(l, pre = {}) {
 const escCor = e => CAT_ESCOLA[e.c][1];
 const escSub = e => [e.s, e.l, e.o].filter(Boolean).map(esc).join(' · ');
 function escRow(e) {
-  return `<div class="row lemb"><span class="arte-g" style="--ec:${escCor(e)}">${arte(e)}</span>
+  return `<div class="row lemb"><span class="arte-g" style="--ec:${escCor(e)}">${ilu(e, 34)}</span>
     <div class="info"><strong>${esc(e.t)}</strong><span>${escSub(e) || CAT_ESCOLA[e.c][0]}</span></div>
     <span class="badge escola" style="--ec:${escCor(e)}">${CAT_ESCOLA[e.c][0]}</span></div>`;
 }
@@ -360,7 +361,7 @@ function vEscolaPainel() {
   if (!ev.length) return '';
   return `<div class="card"><h3>${ic('agenda')}Calendário escolar: próximos 7 dias <em>${ev.length}</em></h3>${ev.map(e => `<div class="row lemb">
       <div class="dt escola" style="--ec:${escCor(e)}"><b>${(e.d < h0 ? h0 : e.d).slice(8)}</b><span>${MESES[+(e.d < h0 ? h0 : e.d).slice(5, 7) - 1].slice(0, 3)}</span></div>
-      <div class="info" data-act="irDia" data-dia="${e.d < h0 ? h0 : e.d}"><strong>${arte(e)} ${esc(e.t)}</strong><span>${escSub(e) || CAT_ESCOLA[e.c][0]}</span></div></div>`).join('')}</div>`;
+      <div class="info" data-act="irDia" data-dia="${e.d < h0 ? h0 : e.d}"><strong>${ilu(e, 18)} ${esc(e.t)}</strong><span>${escSub(e) || CAT_ESCOLA[e.c][0]}</span></div></div>`).join('')}</div>`;
 }
 function vEscolaPend() {
   return `<div class="card"><h3>${ic('sino')}Eventos escolares sem data <em>${ESCOLA_PEND.length}</em></h3>${ESCOLA_PEND.map((p, i) => `<div class="row lemb">
@@ -392,14 +393,14 @@ function imprimirDoc(html) {
   setTimeout(() => window.print(), 150);
 }
 const pcab = (t, s) => `<header class="pd-cab"><img src="logo.png" alt="" onerror="this.remove()"><div><h1>${t}</h1><p>${s}</p></div><small>Emitido em ${fmtData(hoje())}</small></header>`;
-const pEv = e => `<tr><td class="pd-d">${e.d === e.e ? fmtData(e.d).slice(0, 5) : fmtData(e.d).slice(0, 5) + ' a ' + fmtData(e.e).slice(0, 5)}</td><td class="pd-a">${arte(e)}</td>
+const pEv = e => `<tr><td class="pd-d">${e.d === e.e ? fmtData(e.d).slice(0, 5) : fmtData(e.d).slice(0, 5) + ' a ' + fmtData(e.e).slice(0, 5)}</td><td class="pd-a">${ilu(e, 28)}</td>
   <td><b>${esc(e.t)}</b>${escSub(e) ? `<br><small>${escSub(e)}</small>` : ''}</td><td class="pd-c"><i style="background:${escCor(e)}"></i>${CAT_ESCOLA[e.c][0]}</td></tr>`;
 function docEscolaMes(ym) {
   const [y, m] = ym.split('-').map(Number), n = new Date(y, m, 0).getDate(), ini = new Date(y, m - 1, 1).getDay();
   let cel = '<td class="vz"></td>'.repeat(ini), c = ini;
   for (let d = 1; d <= n; d++) {
     const data = `${ym}-${pad(d)}`, ev = escolaDia(data);
-    cel += `<td><b>${d}</b>${ev.map(e => `<span class="pd-ev" style="--ec:${escCor(e)}">${arte(e)} ${esc(e.t)}</span>`).join('')}</td>`;
+    cel += `<td><b>${d}</b>${ev.map(e => `<span class="pd-ev" style="--ec:${escCor(e)}">${ilu(e, 14)} ${esc(e.t)}</span>`).join('')}</td>`;
     if (++c % 7 === 0 && d < n) cel += '</tr><tr>';
   }
   cel += '<td class="vz"></td>'.repeat((7 - c % 7) % 7);
@@ -438,8 +439,8 @@ function vAgenda() {
   for (let d = 1; d <= n; d++) {
     const data = `${ui.mes}-${pad(d)}`, l = porDia[d] || [], lb = lembretesDoDia(data), imp = agendaDia(data), ev = ui.escola ? escolaDia(data) : []; // imp: dia de leitura das impressoras
     cel += `<button class="day ${data === h ? 'today' : ''} ${data === ui.dia ? 'sel' : ''}" data-act="dia" data-dia="${data}">
-      <span class="num">${d}</span>${ev.length ? `<span class="arte" title="${esc(ev[0].t)}">${arte(ev[0])}</span>` : ''}
-      <span class="chips">${ev.slice(0, 1).map(x => `<span class="chip escola" style="--ec:${escCor(x)}">${arte(x)} ${esc(x.t)}</span>`).join('')}${ev.length > 1 ? `<span class="more">+${ev.length - 1} escola</span>` : ''}${imp ? imp.itens.map(i => `<span class="chip ${i.st}">${i.rotulo}</span>`).join('') : ''}${lb.slice(0, 2).map(x => `<span class="chip lembrete ${x.feito ? 'feito' : ''}">${x.hora ? esc(x.hora) + ' ' : ''}${esc(x.titulo)}</span>`).join('')}${l.slice(0, 3).map(i => `<span class="chip ${status(i)}">${esc(i.titulo)}</span>`).join('')}${l.length > 3 ? `<span class="more">+${l.length - 3}</span>` : ''}</span>
+      <span class="num">${d}</span>${ev.length ? `<span class="arte" title="${esc(ev[0].t)}">${ilu(ev[0], 32)}</span>` : ''}
+      <span class="chips">${ev.slice(0, 1).map(x => `<span class="chip escola" style="--ec:${escCor(x)}">${ilu(x, 14)} ${esc(x.t)}</span>`).join('')}${ev.length > 1 ? `<span class="more">+${ev.length - 1} escola</span>` : ''}${imp ? imp.itens.map(i => `<span class="chip ${i.st}">${i.rotulo}</span>`).join('') : ''}${lb.slice(0, 2).map(x => `<span class="chip lembrete ${x.feito ? 'feito' : ''}">${x.hora ? esc(x.hora) + ' ' : ''}${esc(x.titulo)}</span>`).join('')}${l.slice(0, 3).map(i => `<span class="chip ${status(i)}">${esc(i.titulo)}</span>`).join('')}${l.length > 3 ? `<span class="more">+${l.length - 3}</span>` : ''}</span>
       <span class="dots">${ev.slice(0, 3).map(x => `<i class="escola" style="background:${escCor(x)}"></i>`).join('')}${imp ? imp.itens.map(i => `<i class="${i.st}"></i>`).join('') : ''}${lb.slice(0, 2).map(() => '<i class="lembrete"></i>').join('')}${l.slice(0, 5).map(i => `<i class="${status(i)}"></i>`).join('')}</span>
     </button>`;
   }
